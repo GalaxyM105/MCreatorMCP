@@ -1,0 +1,330 @@
+Initialized native services in: /var/home/pwmcclure/.gradle/native
+Initialized jansi services in: /var/home/pwmcclure/.gradle/native
+Received JVM installation metadata from '/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/jdk21': {JAVA_HOME=/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/jdk21, JAVA_VERSION=21.0.11, JAVA_VENDOR=Eclipse Adoptium, RUNTIME_NAME=OpenJDK Runtime Environment, RUNTIME_VERSION=21.0.11+10-LTS, VM_NAME=OpenJDK 64-Bit Server VM, VM_VERSION=21.0.11+10-LTS, VM_VENDOR=Eclipse Adoptium, OS_ARCH=amd64}
+Found daemon DaemonInfo{pid=11452, address=[5f6de0bd-eb75-4300-9036-ee508281578c port:35955, addresses:[/127.0.0.1]], state=Idle, lastBusy=1784228451854, context=DefaultDaemonContext[uid=1edcba06-bbfa-491d-9b8d-864093310ef4,javaHome=/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/jdk,daemonRegistryDir=/var/home/pwmcclure/.gradle/daemon,pid=11452,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]} however its context does not match the desired criteria.
+Java home is different.
+Wanted: DefaultDaemonContext[uid=null,javaHome=/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/jdk21,daemonRegistryDir=/var/home/pwmcclure/.gradle/daemon,pid=13490,idleTimeout=null,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+Actual: DefaultDaemonContext[uid=1edcba06-bbfa-491d-9b8d-864093310ef4,javaHome=/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/jdk,daemonRegistryDir=/var/home/pwmcclure/.gradle/daemon,pid=11452,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,daemonOpts=--add-opens=java.base/java.util=ALL-UNNAMED,--add-opens=java.base/java.lang=ALL-UNNAMED,--add-opens=java.base/java.lang.invoke=ALL-UNNAMED,--add-opens=java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens=java.base/java.nio.charset=ALL-UNNAMED,--add-opens=java.base/java.net=ALL-UNNAMED,--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=384m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+
+  Looking for a different daemon...
+The client will now receive all logging from the daemon (pid: 11665). The daemon log file: /var/home/pwmcclure/.gradle/daemon/8.7/daemon-11665.out.log
+Starting 16th build in daemon [uptime: 12 mins 0.956 secs, performance: 100%, GC rate: 0.00/s, heap usage: 0% of 512 MiB, non-heap usage: 23% of 384 MiB]
+Using 8 worker leases.
+Not watching /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP since the file system is not supported
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file '/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/settings.gradle'.
+Projects loaded. Root project using build file '/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/build.gradle'.
+Included projects: [root project 'MCreatorMCP']
+
+> Configure project :
+Evaluating root project 'MCreatorMCP' using build file '/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/build.gradle'.
+All projects evaluated.
+Task name matched 'compileJava'
+Selected primary task 'compileJava' from project :
+Tasks to be executed: [task ':compileJava']
+Tasks that were excluded: []
+Resolve mutations for :compileJava (Thread[#451,Execution worker,5,main]) started.
+:compileJava (Thread[#455,Execution worker Thread 5,5,main]) started.
+
+> Task :compileJava FAILED
+Caching disabled for task ':compileJava' because:
+  Build cache is disabled
+Task ':compileJava' is not up-to-date because:
+  Task has failed previously.
+The input changes require a full rebuild for incremental task ':compileJava'.
+Full recompilation is required because no incremental change information is available. This is usually caused by clean builds or changing compiler arguments.
+Compiling with toolchain '/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/jdk21'.
+Compiling with JDK Java compiler API.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:5: error: cannot access ModElementType
+import net.mcreator.element.ModElementType;
+                           ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/element/ModElementType.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:6: error: cannot access ModElementTypeLoader
+import net.mcreator.element.ModElementTypeLoader;
+                           ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/element/ModElementTypeLoader.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:7: error: cannot access Workspace
+import net.mcreator.workspace.Workspace;
+                             ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/workspace/Workspace.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:8: error: cannot access ModElement
+import net.mcreator.workspace.elements.ModElement;
+                                      ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/workspace/elements/ModElement.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:9: error: cannot access MCreator
+import net.mcreator.ui.MCreator;
+                      ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/ui/MCreator.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:29: error: cannot find symbol
+    public void registerTools(McpServer mcpServer, MCreator mcreator) {
+                                                   ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:52: error: cannot find symbol
+    private McpTypes.ToolResult executeBuildWorkspace(MCreator mcreator) {
+                                                      ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:76: error: cannot find symbol
+    private McpTypes.ToolResult getWorkspaceInfo(MCreator mcreator) {
+                                                 ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:106: error: cannot find symbol
+    private McpTypes.ToolResult executeRegenerateCode(MCreator mcreator) {
+                                                      ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:130: error: cannot find symbol
+    private McpTypes.ToolResult listModElements(MCreator mcreator, Map<String, Object> params) {
+                                                ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:170: error: cannot find symbol
+    private McpTypes.ToolResult createElement(MCreator mcreator, Map<String, Object> params) {
+                                              ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:229: error: cannot find symbol
+    private McpTypes.ToolResult deleteElement(MCreator mcreator, Map<String, Object> params) {
+                                              ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:266: error: cannot find symbol
+    private McpTypes.ToolResult executeRunClient(MCreator mcreator) {
+                                                 ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:290: error: cannot find symbol
+    private McpTypes.ToolResult executeRunServer(MCreator mcreator) {
+                                                 ^
+  symbol:   class MCreator
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:314: error: cannot find symbol
+    private Map<String, Object> modElementToMap(ModElement element) {
+                                                ^
+  symbol:   class ModElement
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/mcp/McpServer.java:32: error: cannot find symbol
+    private volatile Workspace currentWorkspace;
+                     ^
+  symbol:   class Workspace
+  location: class McpServer
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/mcp/McpServer.java:456: error: cannot find symbol
+    public void setWorkspace(Workspace workspace) {
+                             ^
+  symbol:   class Workspace
+  location: class McpServer
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/mcp/McpServer.java:464: error: cannot find symbol
+    public Workspace getWorkspace() {
+           ^
+  symbol:   class Workspace
+  location: class McpServer
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:6: error: cannot access JavaPlugin
+import net.mcreator.plugin.JavaPlugin;
+                          ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/plugin/JavaPlugin.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:7: error: cannot access Plugin
+import net.mcreator.plugin.Plugin;
+                          ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/plugin/Plugin.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:8: error: cannot access MCreatorLoadedEvent
+import net.mcreator.plugin.events.workspace.MCreatorLoadedEvent;
+                                           ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/plugin/events/workspace/MCreatorLoadedEvent.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:9: error: cannot access BasicAction
+import net.mcreator.ui.action.BasicAction;
+                             ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/ui/action/BasicAction.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:10: error: cannot access L10N
+import net.mcreator.ui.init.L10N;
+                           ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/ui/init/L10N.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:11: error: cannot access UIRES
+import net.mcreator.ui.init.UIRES;
+                           ^
+  bad class file: /var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib/mcreator.jar(/net/mcreator/ui/init/UIRES.class)
+    class file has wrong version 69.0, should be 65.0
+    Please remove or make sure it appears in the correct subdirectory of the classpath.
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:19: error: cannot find symbol
+public class MCreatorMCP extends JavaPlugin {
+                                 ^
+  symbol: class JavaPlugin
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:29: error: cannot find symbol
+    public MCreatorMCP(Plugin plugin) {
+                       ^
+  symbol:   class Plugin
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:72: error: cannot find symbol
+    private void startMCPServer(MCreatorLoadedEvent event) {
+                                ^
+  symbol:   class MCreatorLoadedEvent
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:126: error: cannot find symbol
+    private void restartMCPServer(MCreatorLoadedEvent event) {
+                                  ^
+  symbol:   class MCreatorLoadedEvent
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:80: error: cannot find symbol
+            Workspace workspace = mcreator.getWorkspace();
+            ^
+  symbol:   class Workspace
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:134: error: cannot find symbol
+            Workspace workspace = mcreator.getWorkspace();
+            ^
+  symbol:   class Workspace
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:140: error: cannot find symbol
+            Collection<ModElement> elements = workspace.getModElements();
+                       ^
+  symbol:   class ModElement
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:151: error: incompatible types: inference variable T has incompatible bounds
+                .collect(Collectors.toList());
+                        ^
+    equality constraints: Map<String,Object>
+    lower bounds: Object
+  where T is a type-variable:
+    T extends Object declared in method <T>toList()
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:177: error: cannot find symbol
+            Workspace workspace = mcreator.getWorkspace();
+            ^
+  symbol:   class Workspace
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:191: error: cannot find symbol
+            ModElementType type = null;
+            ^
+  symbol:   class ModElementType
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:192: error: cannot find symbol
+            for (ModElementType met : ModElementTypeLoader.getAllModElementTypes()) {
+                                      ^
+  symbol:   variable ModElementTypeLoader
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:192: error: cannot find symbol
+            for (ModElementType met : ModElementTypeLoader.getAllModElementTypes()) {
+                 ^
+  symbol:   class ModElementType
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:209: error: cannot find symbol
+            final ModElementType finalType = type;
+                  ^
+  symbol:   class ModElementType
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:213: error: cannot find symbol
+                ModElement element = new ModElement(workspace, finalName, finalType);
+                ^
+  symbol:   class ModElement
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:213: error: cannot find symbol
+                ModElement element = new ModElement(workspace, finalName, finalType);
+                                         ^
+  symbol:   class ModElement
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:235: error: cannot find symbol
+            Workspace workspace = mcreator.getWorkspace();
+            ^
+  symbol:   class Workspace
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCPToolsService.java:244: error: cannot find symbol
+            ModElement element = workspace.getModElementByName(elementName.trim());
+            ^
+  symbol:   class ModElement
+  location: class MCPToolsService
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:36: error: cannot find symbol
+        addListener(MCreatorLoadedEvent.class, event -> SwingUtilities.invokeLater(() -> {
+                    ^
+  symbol:   class MCreatorLoadedEvent
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:41: error: cannot find symbol
+            BasicAction demoAction = new BasicAction(event.getMCreator().getActionRegistry(),
+            ^
+  symbol:   class BasicAction
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:41: error: cannot find symbol
+            BasicAction demoAction = new BasicAction(event.getMCreator().getActionRegistry(),
+                                         ^
+  symbol:   class BasicAction
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:42: error: cannot find symbol
+                    L10N.t("plugin.demojava.menu.button"),
+                    ^
+  symbol:   variable L10N
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:44: error: cannot find symbol
+            demoAction.setIcon(UIRES.get("16px.play"));
+                               ^
+  symbol:   variable UIRES
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:47: error: cannot find symbol
+            BasicAction mcpStatusAction = new BasicAction(event.getMCreator().getActionRegistry(),
+            ^
+  symbol:   class BasicAction
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:47: error: cannot find symbol
+            BasicAction mcpStatusAction = new BasicAction(event.getMCreator().getActionRegistry(),
+                                              ^
+  symbol:   class BasicAction
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:50: error: cannot find symbol
+            mcpStatusAction.setIcon(UIRES.get("16px.info"));
+                                    ^
+  symbol:   variable UIRES
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:53: error: cannot find symbol
+            BasicAction mcpRestartAction = new BasicAction(event.getMCreator().getActionRegistry(),
+            ^
+  symbol:   class BasicAction
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:53: error: cannot find symbol
+            BasicAction mcpRestartAction = new BasicAction(event.getMCreator().getActionRegistry(),
+                                               ^
+  symbol:   class BasicAction
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:56: error: cannot find symbol
+            mcpRestartAction.setIcon(UIRES.get("16px.reset"));
+                                     ^
+  symbol:   variable UIRES
+  location: class MCreatorMCP
+/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreatorMCP/src/main/java/net/mcreator/MCreatorMCP/MCreatorMCP.java:59: error: cannot find symbol
+            JMenu menu = new JMenu(L10N.t("plugin.demojava.menu.main"));
+                                   ^
+  symbol:   variable L10N
+  location: class MCreatorMCP
+53 errors
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 1s
+1 actionable task: 1 executed
+Some of the file system contents retained in the virtual file system are on file systems that Gradle doesn't support watching. The relevant state was discarded to ensure changes to these locations are properly detected. You can override this by explicitly enabling file system watching.

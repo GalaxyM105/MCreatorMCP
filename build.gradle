@@ -15,21 +15,14 @@ repositories {
 group = 'net.mcreator.MCreatorMCP'
 version = new JsonSlurper().parse(file('src/main/resources/plugin.json'))['info']['version']
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
 configurations {
     implementation.extendsFrom export
 }
 
 dependencies {
-    implementation project(':MCreator')
-
-    project(':MCreator').afterEvaluate {
-        project(":MCreator").configurations.named("implementation").get().dependencies.each {
-            //noinspection ForeignDelegate
-            implementation it
-        }
-    }
+    implementation fileTree(dir: '/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib', include: ['*.jar'])
 
     // JSON processing for MCP server
     export group: 'com.fasterxml.jackson.core', name: 'jackson-core', version: '2.16.1'
@@ -65,7 +58,7 @@ tasks.register('runMCreatorWithPlugin', JavaExec) {
 
     jvmArgs '--add-opens', 'java.base/java.lang=ALL-UNNAMED'
 
-    classpath = project(':MCreator').sourceSets.main.runtimeClasspath
+    classpath = files(mcreator_path + '/lib/*')
 
     main = 'net.mcreator.Launcher'
 

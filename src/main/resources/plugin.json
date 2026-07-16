@@ -1,8 +1,8 @@
 {
   "id": "mcreator_mcp_plugin",
   "supportedversions": [
-    202500299999,
-    2025002
+    202600299999,
+    2026002
   ],
   "weight": 0,
   "javaplugin": "net.mcreator.MCreatorMCP.MCreatorMCP",
