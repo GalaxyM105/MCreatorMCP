@@ -22,7 +22,7 @@ configurations {
 }
 
 dependencies {
-    implementation fileTree(dir: '/var/home/pwmcclure/Documents/MCreatorAntiGravityMCPTesting/MCreator/lib', include: ['*.jar'])
+    implementation fileTree(dir: mcreator_path + '/lib', include: ['*.jar'])
 
     // JSON processing for MCP server
     export group: 'com.fasterxml.jackson.core', name: 'jackson-core', version: '2.16.1'
