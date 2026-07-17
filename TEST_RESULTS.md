@@ -64,7 +64,8 @@ Workspace used: `MCPTtest8` (Neoforge 1.21.1 generator, mod id `mcptest8`).
 ## In-Game Verification
 - `runClient()` launched Minecraft 1.21.1 with NeoForge 21.1.232.
 - The Mods screen listed `MCP Test Mod 8 1.1.0` (3 mods total).
-- Latest client log showed mod resources loaded; remaining warnings were only for pre-existing test blocks whose `itemTexture` pointed to a block texture that had not been copied to `items/`.
+- New blocks created after the `itemTexture` fix (e.g. `TestBlock2`) produced no missing-texture warnings and `TestRubyRecipe` produced no recipe parsing errors.
+- Remaining warnings were only for pre-existing test blocks whose `itemTexture` still pointed to a block texture.
 - `runServer()` previously reached `Done (4.033s)!` after accepting the EULA.
 
 ## Known Issues / Notes
