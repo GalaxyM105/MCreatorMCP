@@ -97,7 +97,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **139 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, lifecycle, fine-grained editing, texture/model processing, in-game verification, publishing, datapack/Bedrock helpers, log streaming, and CI automation categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **146 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, lifecycle, fine-grained editing, texture/model processing, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, and addon/plugin integration categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
@@ -105,6 +105,9 @@ The MCP server now exposes **139 tools** across workspace, element, asset, build
 - `getWorkspaceSettings()` - Get all workspace settings
 - `updateWorkspaceSettings(settings)` - Update workspace settings
 - `regenerateCode()` - Regenerate code without building
+- `exportWorkspace(outputPath, includeRunDir?)` - Export the current workspace to a shareable `.zip`
+- `importWorkspace(zipPath, targetFolder?)` - Import a workspace `.zip` (extract only; open manually or restart MCreator)
+- `listRecentWorkspaces()` - List recently opened MCreator workspaces
 
 ### Element Discovery & Search
 - `listModElements(elementType?)` - List mod elements with optional filtering
@@ -129,6 +132,11 @@ The MCP server now exposes **139 tools** across workspace, element, asset, build
 - `importModel(modelName, sourcePath)` - Import a model (Java JSON/OBJ)
 - `deleteModel(modelName)` - Delete a model
 - `getAssetMetadata(assetName, assetType)` - Get asset metadata
+
+### Installed Plugins & Mod APIs
+- `listInstalledPlugins()` - List all installed MCreator plugins and generators
+- `listModAPIs()` - List API plugins/addons available for the current generator
+- `enableModAPI(apiId)` / `disableModAPI(apiId)` - Enable or disable an API dependency (e.g. `mcreator_link`)
 
 ### Workspace Variables & Localization
 - `listWorkspaceVariables()` - List all workspace variables

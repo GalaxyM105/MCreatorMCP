@@ -34,11 +34,20 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
+
+import net.mcreator.plugin.Plugin;
+import net.mcreator.plugin.PluginLoader;
+import net.mcreator.plugin.modapis.ModAPI;
+import net.mcreator.plugin.modapis.ModAPIImplementation;
+import net.mcreator.plugin.modapis.ModAPIManager;
 
 public class McpLifecycleToolsService {
 
@@ -156,6 +165,41 @@ public class McpLifecycleToolsService {
 						"timeoutSeconds", host.stringSchema("Server verification timeout (default: 180)")
 				)),
 				params -> runCIBuild(params));
+
+		// Workspace / session management
+		mcpServer.registerTool("exportWorkspace", "Export the current workspace to a shareable .zip file",
+				host.objectSchema(host.props(
+						"outputPath", host.stringSchema("Output .zip file path"),
+						"includeRunDir", host.stringSchema("Include the run directory (true/false, default: false)")
+				), "outputPath"),
+				params -> exportWorkspace(params));
+		mcpServer.registerTool("importWorkspace", "Import a workspace from a .zip file (extract only; open it manually or restart MCreator)",
+				host.objectSchema(host.props(
+						"zipPath", host.stringSchema("Path to the workspace .zip"),
+						"targetFolder", host.stringSchema("Optional folder to extract to")
+				), "zipPath"),
+				params -> importWorkspace(params));
+		mcpServer.registerTool("listRecentWorkspaces", "List recently opened MCreator workspaces",
+				host.objectSchema(Map.of()),
+				params -> listRecentWorkspaces(params));
+
+		// Addon / API integration helpers
+		mcpServer.registerTool("listInstalledPlugins", "List installed MCreator plugins",
+				host.objectSchema(Map.of()),
+				params -> listInstalledPlugins(params));
+		mcpServer.registerTool("listModAPIs", "List MCreator API plugins/addons available for the current generator",
+				host.objectSchema(Map.of()),
+				params -> listModAPIs(params));
+		mcpServer.registerTool("enableModAPI", "Enable an API plugin/addon for the workspace",
+				host.objectSchema(host.props(
+						"apiId", host.stringSchema("API ID (e.g. geckolib)")
+				), "apiId"),
+				params -> enableModAPI(params));
+		mcpServer.registerTool("disableModAPI", "Disable an API plugin/addon for the workspace",
+				host.objectSchema(host.props(
+						"apiId", host.stringSchema("API ID (e.g. geckolib)")
+				), "apiId"),
+				params -> disableModAPI(params));
 	}
 
 	private McpTypes.ToolResult cloneElement(Map<String, Object> params) {
@@ -941,6 +985,201 @@ public class McpLifecycleToolsService {
 		if (value instanceof Boolean b) return b;
 		String s = String.valueOf(value).toLowerCase(Locale.ROOT);
 		return s.equals("true") || s.equals("yes") || s.equals("1") || s.equals("on");
+	}
+
+	// ------------------------------------------------------------------
+	// Workspace / session management
+	// ------------------------------------------------------------------
+
+	private McpTypes.ToolResult exportWorkspace(Map<String, Object> params) {
+		Workspace ws = mcreator.getWorkspace();
+		if (ws == null) return host.createErrorResult("No workspace loaded");
+
+		String outputPath = stringParam(params, "outputPath");
+		if (outputPath == null) return host.createErrorResult("outputPath is required");
+		boolean includeRunDir = toBoolean(params.get("includeRunDir"), false);
+
+		File workspaceFolder = ws.getFolderManager().getWorkspaceFolder();
+		File output = new File(outputPath);
+		output.getParentFile().mkdirs();
+
+		Set<String> excludedDirs = new HashSet<>(Set.of("build", ".gradle", ".git", ".mcreator-backup"));
+		if (!includeRunDir) excludedDirs.add("run");
+
+		try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(output))) {
+			Path root = workspaceFolder.toPath();
+			Files.walk(root).forEach(path -> {
+				try {
+					String relative = root.relativize(path).toString().replace(File.separatorChar, '/');
+					if (relative.isEmpty()) return;
+					String[] parts = relative.split("/");
+					if (parts.length > 0 && excludedDirs.contains(parts[0])) return;
+					if (Files.isDirectory(path)) {
+						if (!relative.endsWith("/")) relative += "/";
+						zos.putNextEntry(new ZipEntry(relative));
+						zos.closeEntry();
+					} else {
+						zos.putNextEntry(new ZipEntry(relative));
+						Files.copy(path, zos);
+						zos.closeEntry();
+					}
+				} catch (Exception e) {
+					LOG.warn("Could not zip {}: {}", path, e.getMessage());
+				}
+			});
+			return host.createSuccessResult("Exported workspace to " + output.getAbsolutePath());
+		} catch (Exception e) {
+			LOG.error("Failed to export workspace", e);
+			return host.createErrorResult("Failed to export workspace: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult importWorkspace(Map<String, Object> params) {
+		String zipPath = stringParam(params, "zipPath");
+		if (zipPath == null) return host.createErrorResult("zipPath is required");
+		File zip = new File(zipPath);
+		if (!zip.exists()) return host.createErrorResult("ZIP file not found: " + zipPath);
+
+		String targetFolder = stringParam(params, "targetFolder");
+
+		try (ZipFile zf = new ZipFile(zip)) {
+			String mcreatorEntry = null;
+			for (Enumeration<? extends ZipEntry> e = zf.entries(); e.hasMoreElements(); ) {
+				ZipEntry entry = e.nextElement();
+				if (!entry.isDirectory() && entry.getName().endsWith(".mcreator")) {
+					mcreatorEntry = entry.getName();
+					break;
+				}
+			}
+			if (mcreatorEntry == null) return host.createErrorResult("ZIP does not contain a .mcreator workspace file");
+
+			File target;
+			if (targetFolder != null) {
+				target = new File(targetFolder);
+			} else {
+				String top = mcreatorEntry.contains("/") ? mcreatorEntry.substring(0, mcreatorEntry.indexOf('/')) : "";
+				if (top.isEmpty()) top = new File(mcreatorEntry).getName().replace(".mcreator", "");
+				target = new File(zip.getParentFile(), top);
+			}
+			target.mkdirs();
+
+			boolean hasCommonRoot = mcreatorEntry.contains("/");
+			String commonRoot = hasCommonRoot ? mcreatorEntry.substring(0, mcreatorEntry.indexOf('/') + 1) : "";
+
+			for (Enumeration<? extends ZipEntry> e = zf.entries(); e.hasMoreElements(); ) {
+				ZipEntry entry = e.nextElement();
+				String name = entry.getName();
+				if (hasCommonRoot && name.startsWith(commonRoot))
+					name = name.substring(commonRoot.length());
+				if (name.isEmpty() || name.endsWith("/")) continue;
+				File dest = new File(target, name);
+				dest.getParentFile().mkdirs();
+				try (InputStream is = zf.getInputStream(entry)) {
+					Files.copy(is, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+				}
+			}
+
+			return host.createSuccessResult("Imported workspace to " + target.getAbsolutePath() + ". Restart MCreator to open it.");
+		} catch (Exception e) {
+			LOG.error("Failed to import workspace", e);
+			return host.createErrorResult("Failed to import workspace: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult listRecentWorkspaces(Map<String, Object> params) {
+		File recent = new File(System.getProperty("user.home"), ".mcreator/recentworkspaces");
+		if (!recent.exists()) return host.createSuccessResult("No recent workspaces found");
+		try {
+			JsonNode node = objectMapper.readTree(recent);
+			return host.createSuccessResult(objectMapper.writeValueAsString(node));
+		} catch (Exception e) {
+			return host.createErrorResult("Could not read recent workspaces: " + e.getMessage());
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Addon / API integration helpers
+	// ------------------------------------------------------------------
+
+	private McpTypes.ToolResult listInstalledPlugins(Map<String, Object> params) {
+		Collection<Plugin> plugins = PluginLoader.INSTANCE.getPlugins();
+		List<Map<String, Object>> list = new ArrayList<>();
+		for (Plugin plugin : plugins) {
+			Map<String, Object> map = new LinkedHashMap<>();
+			map.put("id", plugin.getID());
+			map.put("builtin", plugin.isBuiltin());
+			map.put("version", plugin.getPluginVersion());
+			if (plugin.getInfo() != null) {
+				map.put("name", plugin.getInfo().getName());
+				map.put("author", plugin.getInfo().getAuthor());
+				map.put("description", plugin.getInfo().getDescription());
+			}
+			list.add(map);
+		}
+		try {
+			Map<String, Object> result = new LinkedHashMap<>();
+			result.put("plugins", list);
+			return host.createSuccessResult(objectMapper.writeValueAsString(result));
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to serialize plugins: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult listModAPIs(Map<String, Object> params) {
+		Workspace ws = mcreator.getWorkspace();
+		if (ws == null) return host.createErrorResult("No workspace loaded");
+		String generator = ws.getGenerator().getGeneratorName();
+		List<ModAPIImplementation> apis = ModAPIManager.getModAPIsForGenerator(generator);
+		List<Map<String, Object>> list = new ArrayList<>();
+		for (ModAPIImplementation impl : apis) {
+			Map<String, Object> map = new LinkedHashMap<>();
+			map.put("id", impl.parent().id());
+			map.put("name", impl.parent().name());
+			map.put("gradle", impl.gradle());
+			map.put("requiredWhenEnabled", impl.requiredWhenEnabled());
+			map.put("versionRange", impl.versionRange());
+			list.add(map);
+		}
+		try {
+			Map<String, Object> result = new LinkedHashMap<>();
+			result.put("generator", generator);
+			result.put("apis", list);
+			return host.createSuccessResult(objectMapper.writeValueAsString(result));
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to serialize APIs: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult enableModAPI(Map<String, Object> params) {
+		Workspace ws = mcreator.getWorkspace();
+		if (ws == null) return host.createErrorResult("No workspace loaded");
+		String apiId = stringParam(params, "apiId");
+		if (apiId == null) return host.createErrorResult("apiId is required");
+
+		String generator = ws.getGenerator().getGeneratorName();
+		List<ModAPIImplementation> apis = ModAPIManager.getModAPIsForGenerator(generator);
+		boolean found = apis.stream().anyMatch(i -> i.parent().id().equalsIgnoreCase(apiId));
+		if (!found) return host.createErrorResult("API '" + apiId + "' is not available for generator " + generator);
+
+		Set<String> deps = ws.getWorkspaceSettings().getMCreatorDependenciesRaw();
+		if (deps == null) {
+			deps = new HashSet<>();
+			ws.getWorkspaceSettings().setMCreatorDependencies(deps);
+		}
+		deps.add(apiId);
+		ws.markDirty();
+		return host.createSuccessResult("Enabled API " + apiId + " for workspace");
+	}
+
+	private McpTypes.ToolResult disableModAPI(Map<String, Object> params) {
+		Workspace ws = mcreator.getWorkspace();
+		if (ws == null) return host.createErrorResult("No workspace loaded");
+		String apiId = stringParam(params, "apiId");
+		if (apiId == null) return host.createErrorResult("apiId is required");
+		Set<String> deps = ws.getWorkspaceSettings().getMCreatorDependenciesRaw();
+		if (deps != null) deps.remove(apiId);
+		ws.markDirty();
+		return host.createSuccessResult("Disabled API " + apiId + " for workspace");
 	}
 
 	private static class RConClient implements Closeable {

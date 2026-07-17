@@ -10,7 +10,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - Health endpoint: `http://localhost:5175/health`
 
 ## Tool Count
-`tools/list` returned **139 tools** after the Phase 5 publishing/verification/datapack/Bedrock/GUI expansion (workspace/element/asset/variable/build/export/validation + per-type `create<TYPE>` shortcuts + procedure/event/workflow tools + Bedrock pack tools + versioning/test-report tools + lifecycle helpers + fine-grained editing + texture/model pipeline + in-game verification + publishing + datapack-only worldgen + log streaming + CI automation).
+`tools/list` returned **146 tools** after the Phase 6 GUI/Overlay/Structure/model/advanced-block/in-world/workspace/API expansion (all previous categories + full GUI/Overlay component editing + Structure NBT import + entity model/animation pipeline + advanced block property aliases + in-world automated block/entity testing + workspace export/import + installed plugin/mod API integration helpers).
 
 ## Core Workspace Tools
 
@@ -202,8 +202,33 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - `publishToModrinth` sends the required `dependencies`/`featured`/`file_parts` fields and appends the HTTP response code to the tool output.
 - `verifyClientInGame` uses a virtual display, waits for the title screen, and captures the in-game screenshot via `import`/xdotool.
 
-### Known Issues / Notes (Post-Phase 5)
-1. `executeServerCommand` still requires an RCON-enabled server; starting a server with `runServer()` does not enable RCON, so use `runTestScenario()` for automated command chains.
+### Phase 6 Tests — GUI/Overlay/Structure, Model/Animation, Advanced Block Properties, In-World Verification, Workspace/API Integration
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `createGui` | `elementName=TestGui`, `width=256`, `height=200`, `components` with `label` and `button` | created GUI element with serialized `GUIComponent` list; code regenerated and built successfully |
+| `createOverlay` | `elementName=TestOverlay`, `components` with `image` and `label`, `baseTexture` | created Overlay element; generated code compiled cleanly |
+| `createStructure` | `elementName=McpTower`, `structureFile=/tmp/test_structure.nbt` | NBT file copied to `src/main/resources/data/mcptest7/structure/test_structure.nbt`; `structure` field set to `test_structure` |
+| `createLivingentity` | `elementName=ModelMob`, `model=Default`, `texture=model_mob_texture`, `animations=[{animation:walk}]` | `mobModelName`, `mobModelTexture`, `modelLayers`, `aixml`, and `animations` defaulted/persisted; generated renderer class compiled |
+| `createBlock` | `elementName=AdvPropBlock`, `rotation=y_axis`, `render=cutout`, `transparencyType=CUTOUT`, `tint=Grass`, `toolClass=pickaxe`, `toolLevel=2`, `customModelName=cube_all` | created block with `rotationMode`, `renderType`, `transparencyType`, `tintType`, `destroyTool`, and `vanillaToolTier` mapped; built successfully |
+| `runTestScenario` | `place-break-inspect`: `setblock 0 70 0 mcptest7:adv_prop_block`, `data get entity`, `setblock 0 70 0 air` | server reached `Done`, RCON connected, custom block placed/broken, `ModelMob` summoned and Health inspected |
+| `exportWorkspace` | `outputPath=/tmp/mcptest7_workspace.zip` | produced shareable 814 KB workspace ZIP |
+| `importWorkspace` | `zipPath=/tmp/mcptest7_workspace.zip`, `targetFolder=/tmp/mcptest7_imported` | extracted workspace files; `.mcreator` present and directory structure intact |
+| `listRecentWorkspaces` | no args | returned `MCPTtest7` recent entry with path/version |
+| `listInstalledPlugins` | no args | returned built-in plugins including `mcreator_mcp_plugin`, `generator-1.21.1`, etc. |
+| `listModAPIs` | no args | returned `mcreator_link` API available for `neoforge-1.21.1` |
+| `enableModAPI` / `disableModAPI` | `apiId=mcreator_link` | enabled API dependency, regenerated code, built JAR with `Loaded APIs: mcreator_link`; disabled cleanly |
+| `exportModrinth` | `outputPath=/tmp/mcptest7.mrpack` | produced `.mrpack` with `modrinth.index.json` and `overrides/mods/modid-1.0.jar` |
+
+### Phase 6 Fixes Verified
+- `McpElementPropertyApplier` now parses `GUIComponent`/`Overlay` `components` and `gridSettings` through the official `GSONAdapter`, supports `Structure` NBT import via `WorkspaceFolderManager.getStructuresDir()`, and applies `LivingEntity` `mobModelName`/`mobModelTexture`/`modelLayers`/`animations` defaults including `XML_BASE` for `aixml`.
+- Added Block property aliases (`rotationmode`, `rendertype`, `transparent`, `transparencytype`, `tinttype`, `custommodel`, `itemtexture`, `particle`) and string-to-int parsers for `renderType` (`solid/cutout/translucent/cutout_mipped`) and `rotationMode` (`none/y_axis/all_axis/block_y_axis/block_all_axis/log`).
+- `McpLifecycleToolsService` adds workspace import/export, recent-workspace listing, installed plugin listing, and mod API enable/disable helpers.
+- `GameRule` displayName and `LivingEntity` mobName/label/behaviour/creatureType/aiBase/aixml are now defaulted in `postProcess` to prevent `GEValidator` load failures.
+
+### Known Issues / Notes (Post-Phase 6)
+1. `executeServerCommand` still requires an RCON-enabled server; use `runTestScenario()` for automated command chains.
 2. `publishToModrinth`/`publishToCurseForge` are end-to-end wired but return 401/404 when using dummy credentials; a real API token/project ID is required for actual uploads.
-3. The test workspace still contains overlapping villager-profession POI blocks and an advancement with a missing item, which produce non-fatal server log errors.
+3. The test workspace contains overlapping villager-profession POI blocks and an advancement with a missing item, which produce non-fatal server log errors.
+4. `importWorkspace` extracts the workspace `.zip` but cannot automatically open it in the running MCreator window; open the extracted `.mcreator` file manually or restart MCreator with that path.
 4. Multi-workspace/no-workspace mode and safe generator migration are not exposed as tools because MCreator's active `MCreator` instance is bound to a single workspace window; these remain documented limitations.

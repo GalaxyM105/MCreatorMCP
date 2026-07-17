@@ -2,6 +2,7 @@ package net.mcreator.MCreatorMCP.mcp;
 
 import net.mcreator.element.GeneratableElement;
 import net.mcreator.element.parts.*;
+import net.mcreator.element.parts.gui.*;
 import net.mcreator.element.parts.procedure.LogicProcedure;
 import net.mcreator.element.parts.procedure.NumberProcedure;
 import net.mcreator.element.parts.procedure.Procedure;
@@ -12,6 +13,7 @@ import net.mcreator.element.util.GEValidator;
 import net.mcreator.generator.mapping.MappableElement;
 import net.mcreator.minecraft.DataListEntry;
 import net.mcreator.minecraft.DataListLoader;
+import net.mcreator.minecraft.RegistryNameFixer;
 import net.mcreator.plugin.Plugin;
 import net.mcreator.plugin.PluginLoader;
 import net.mcreator.ui.workspace.resources.TextureType;
@@ -37,6 +39,12 @@ import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import com.google.gson.reflect.TypeToken;
 
 /**
  * Converts rich JSON property maps into MCreator {@link GeneratableElement} field values.
@@ -75,6 +83,23 @@ public class McpElementPropertyApplier {
 		blockAliases.put("toollevel", "vanillaToolTier");
 		blockAliases.put("creativetab", "creativeTabs");
 		blockAliases.put("maxstacksize", "maxStackSize");
+		blockAliases.put("rotationmode", "rotationMode");
+		blockAliases.put("rotation", "rotationMode");
+		blockAliases.put("render", "renderType");
+		blockAliases.put("rendertype", "renderType");
+		blockAliases.put("transparent", "hasTransparency");
+		blockAliases.put("connectingsides", "connectedSides");
+		blockAliases.put("connecting", "connectedSides");
+		blockAliases.put("blockbase", "blockBase");
+		blockAliases.put("blocksettype", "blockSetType");
+		blockAliases.put("settype", "blockSetType");
+		blockAliases.put("transparencytype", "transparencyType");
+		blockAliases.put("tint", "tintType");
+		blockAliases.put("tinttype", "tintType");
+		blockAliases.put("custommodel", "customModelName");
+		blockAliases.put("model", "customModelName");
+		blockAliases.put("itemtexture", "itemTexture");
+		blockAliases.put("particle", "particleTexture");
 		ALIASES.put("block", blockAliases);
 
 		Map<String, String> toolAliases = new HashMap<>();
@@ -374,6 +399,96 @@ public class McpElementPropertyApplier {
 				applyRecipeInputsAndOutputs(recipe, inputs, output);
 			}
 		}
+
+		if (ge instanceof GUI gui || ge instanceof Overlay overlay) {
+			Object components = properties.remove("components");
+			if (components != null) {
+				List<GUIComponent> list = parseGuiComponents(components);
+				if (ge instanceof GUI g)
+					g.components = list;
+				else
+					((Overlay) ge).components = list;
+			}
+			Object grid = properties.remove("grid");
+			if (grid == null)
+				grid = properties.remove("gridSettings");
+			if (grid != null) {
+				GridSettings settings = parseGridSettings(grid);
+				if (ge instanceof GUI g)
+					g.gridSettings = settings;
+				else
+					((Overlay) ge).gridSettings = settings;
+			}
+		}
+
+		if (ge instanceof Structure structure) {
+			Object structureFile = properties.remove("structureFile");
+			if (structureFile != null) {
+				String path = String.valueOf(structureFile);
+				File src = new File(path);
+				if (src.exists()) {
+					File structuresDir = workspace.getFolderManager().getStructuresDir();
+					if (structuresDir != null) {
+						structuresDir.mkdirs();
+						String name = src.getName().toLowerCase(Locale.ROOT);
+						if (!name.endsWith(".nbt"))
+							name += ".nbt";
+						String fixedName = RegistryNameFixer.fix(name);
+						File dest = new File(structuresDir, fixedName);
+						try {
+							Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+							structure.structure = fixedName.endsWith(".nbt") ? fixedName.substring(0, fixedName.length() - 4) : fixedName;
+						} catch (Exception e) {
+							LOG.warn("Could not copy structure NBT file: {}", e.getMessage());
+						}
+					}
+				} else {
+					LOG.warn("Structure file not found: {}", path);
+				}
+			}
+		}
+
+		if (ge instanceof LivingEntity living) {
+			Object model = properties.remove("model");
+			if (model == null)
+				model = properties.remove("mobModel");
+			Object texture = properties.remove("texture");
+			if (texture == null)
+				texture = properties.remove("mobModelTexture");
+			String modelName = model != null ? String.valueOf(model) : "Default";
+			String textureName = texture != null ? String.valueOf(texture) : (elementName.toLowerCase(Locale.ROOT) + "_texture");
+			living.mobModelName = modelName;
+			living.mobModelTexture = textureName;
+			LivingEntity.ModelLayerEntry entry = new LivingEntity.ModelLayerEntry();
+			entry.model = modelName;
+			entry.texture = textureName;
+			if (living.modelLayers == null)
+				living.modelLayers = new ArrayList<>();
+			living.modelLayers.add(entry);
+			Object animations = properties.remove("animations");
+			if (animations instanceof List<?> list && !list.isEmpty()) {
+				if (living.animations == null)
+					living.animations = new ArrayList<>();
+				for (Object o : list) {
+					if (o instanceof Map<?, ?> map) {
+						LivingEntity.AnimationEntry entry2 = new LivingEntity.AnimationEntry();
+						Object anim = map.get("animation");
+						if (anim != null)
+							entry2.animation = new Animation(workspace, String.valueOf(anim));
+						Object speed = map.get("speed");
+						if (speed instanceof Number n)
+							entry2.speed = n.doubleValue();
+						Object walking = map.get("walking");
+						if (walking instanceof Boolean b)
+							entry2.walking = b;
+						Object amplitude = map.get("amplitude");
+						if (amplitude instanceof Number n)
+							entry2.amplitude = n.doubleValue();
+						living.animations.add(entry2);
+					}
+				}
+			}
+		}
 	}
 
 	private void postProcess(GeneratableElement ge) {
@@ -472,12 +587,48 @@ public class McpElementPropertyApplier {
 		if (ge instanceof GameRule gameRule) {
 			if (gameRule.type == null || gameRule.type.isEmpty())
 				gameRule.type = "Boolean";
-			if (gameRule.category == null)
+			if (gameRule.category == null || gameRule.category.isEmpty())
 				gameRule.category = "MISC";
-			if (gameRule.displayName == null)
+			if (gameRule.displayName == null || gameRule.displayName.isEmpty())
 				gameRule.displayName = elementName;
 			if (gameRule.description == null)
 				gameRule.description = "";
+		}
+
+		if (ge instanceof LivingEntity living) {
+			if (living.mobName == null || living.mobName.isEmpty())
+				living.mobName = elementName;
+			if (living.mobLabel == null || living.mobLabel.isEmpty())
+				living.mobLabel = elementName;
+			if (living.mobModelName == null || living.mobModelName.isEmpty())
+				living.mobModelName = "Default";
+			if (living.mobModelTexture == null || living.mobModelTexture.isEmpty())
+				living.mobModelTexture = elementName.toLowerCase(Locale.ROOT) + "_texture";
+			if (living.mobBehaviourType == null || living.mobBehaviourType.isEmpty())
+				living.mobBehaviourType = "Creature";
+			if (living.mobCreatureType == null || living.mobCreatureType.isEmpty())
+				living.mobCreatureType = "UNDEFINED";
+			if (living.bossBarColor == null)
+				living.bossBarColor = "PURPLE";
+			if (living.bossBarType == null)
+				living.bossBarType = "PROGRESS";
+			if (living.aiBase == null)
+				living.aiBase = "Zombie";
+			if (living.aixml == null || living.aixml.isEmpty()) {
+				try {
+					java.lang.reflect.Field f = LivingEntity.class.getDeclaredField("XML_BASE");
+					f.setAccessible(true);
+					living.aixml = (String) f.get(null);
+				} catch (Exception e) {
+					living.aixml = "";
+				}
+			}
+			if (living.modelLayers == null || living.modelLayers.isEmpty()) {
+				LivingEntity.ModelLayerEntry entry = new LivingEntity.ModelLayerEntry();
+				entry.model = living.mobModelName;
+				entry.texture = living.mobModelTexture;
+				living.modelLayers = new ArrayList<>(List.of(entry));
+			}
 		}
 
 		if (ge instanceof Attribute attribute) {
@@ -1166,8 +1317,13 @@ public class McpElementPropertyApplier {
 			return String.valueOf(value);
 		}
 
-		if (type == int.class || type == Integer.class)
+		if (type == int.class || type == Integer.class) {
+			if (field.getDeclaringClass() == Block.class && "renderType".equals(field.getName()))
+				return parseRenderType(value);
+			if (field.getDeclaringClass() == Block.class && "rotationMode".equals(field.getName()))
+				return parseRotationMode(value);
 			return toInt(value);
+		}
 		if (type == long.class || type == Long.class)
 			return (long) toDouble(value);
 		if (type == short.class || type == Short.class)
@@ -1645,6 +1801,52 @@ public class McpElementPropertyApplier {
 			return n.intValue();
 		String s = String.valueOf(value).toLowerCase(Locale.ROOT);
 		return BLOCK_RENDER_TYPES.getOrDefault(s, 10);
+	}
+
+	private int parseRotationMode(Object value) {
+		if (value instanceof Number n)
+			return n.intValue();
+		String s = String.valueOf(value).toLowerCase(Locale.ROOT).replace(" ", "_");
+		return switch (s) {
+			case "none", "no", "0" -> 0;
+			case "y_axis", "player_y_axis", "y", "facing", "1" -> 1;
+			case "all_axis", "player_all_axis", "all", "2" -> 2;
+			case "block_y_axis", "3" -> 3;
+			case "block_all_axis", "4" -> 4;
+			case "log", "5" -> 5;
+			default -> toInt(value);
+		};
+	}
+
+	private List<GUIComponent> parseGuiComponents(Object value) {
+		try {
+			Gson gson = new GsonBuilder().registerTypeAdapter(GUIComponent.class, new GUIComponent.GSONAdapter())
+					.disableHtmlEscaping().setPrettyPrinting().setLenient().create();
+			String json = gson.toJson(value);
+			JsonElement element = JsonParser.parseString(json);
+			if (element.isJsonArray()) {
+				return gson.fromJson(element, new TypeToken<List<GUIComponent>>() {
+				}.getType());
+			}
+			if (element.isJsonObject()) {
+				GUIComponent single = gson.fromJson(element, GUIComponent.class);
+				return new ArrayList<>(List.of(single));
+			}
+		} catch (Exception e) {
+			LOG.warn("Could not parse GUI/Overlay components: {}", e.getMessage());
+		}
+		return new ArrayList<>();
+	}
+
+	private GridSettings parseGridSettings(Object value) {
+		try {
+			Gson gson = new GsonBuilder().disableHtmlEscaping().setLenient().create();
+			String json = gson.toJson(value);
+			return gson.fromJson(json, GridSettings.class);
+		} catch (Exception e) {
+			LOG.warn("Could not parse gridSettings: {}", e.getMessage());
+			return new GridSettings();
+		}
 	}
 
 	private TextureType getTextureTypeForField(Field field) {
