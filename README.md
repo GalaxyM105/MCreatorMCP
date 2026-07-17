@@ -97,7 +97,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **80+ tools** across workspace, element, asset, build, localization, and validation categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **117 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, and model categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
@@ -170,6 +170,16 @@ The MCP server now exposes **80+ tools** across workspace, element, asset, build
 ### Versioning & Test Reports
 - `compareElementVersions(elementName, version1?, version2?)` - Compare an element between workspace backups (`current`, `latest`, or backup name)
 - `generateTestReport(logPath?)` - Parse the latest client/server log and produce a summary of errors, warnings, missing textures, and recipe errors
+
+### Tags, Creative Tabs, Backups & Generators
+- `createTag(tagType, tagName, entries)` / `updateTag(tagType, tagName, entries)` / `deleteTag(tagType, tagName)` / `listTags(tagType?)` - Manage data tags (items, blocks, entities, functions, biomes, etc.)
+- `createCreativeTab(tabName, displayName, icon, showSearch?)` / `updateCreativeTabs(tabName, elementNames)` / `listCreativeTabs()` - Manage custom creative inventory tabs
+- `createBackup(backupName?)` / `listBackups()` / `restoreBackup(backupName)` - Workspace local-history checkpoints
+- `listGenerators()` / `switchGenerator(generatorName)` - Switch the active generator plugin (e.g. `neoforge-1.21.1`, `datapack-1.21.1`, `addon-26.1x`)
+
+### Model Validation & Conversion
+- `validateModel(sourcePath)` - Validate a `.json` or `.obj` model file
+- `convertModel(sourcePath, modelName, modelType, texture?)` - Convert an OBJ model into a Minecraft JSON model or copy an existing JSON model into the workspace
 
 ## Resources
 
@@ -412,9 +422,13 @@ curl -X POST http://localhost:<port>/mcp \
 
 ## License
 
-This fork and the modifications made to it are licensed under the **GNU General Public License v2.0 only (GPL-2.0-only)** - see the [LICENSE](LICENSE) file for details.
+This repository is licensed under the **GNU General Public License v2.0 only
+(GPL-2.0-only)** - see the [LICENSE](LICENSE) file for details.
 
-The original MCreatorMCP code by Pylo was released under the MIT License; the original license notice is preserved in the [LICENSE](LICENSE) file for attribution.
+The original MCreatorMCP code by Pylo was released under the MIT License. The
+MIT License is compatible with the GPL and that code is included in this
+combined work under GPL-2.0-only, with the original MIT copyright and
+permission notices preserved in the [LICENSE](LICENSE) file for attribution.
 
 ## Links
 

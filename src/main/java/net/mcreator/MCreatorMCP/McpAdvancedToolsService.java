@@ -683,10 +683,12 @@ public class McpAdvancedToolsService {
             List<String> files = new ArrayList<>();
             files.add(soundName);
             String cat = category != null ? category.toLowerCase(Locale.ROOT) : "master";
-            SoundElement sound = new SoundElement(soundName, files, cat, subtitleKey);
+            // The generator creates the subtitle key as subtitles.<soundName> by default.
+            String subtitle = subtitleKey != null ? subtitleKey : "subtitles." + soundName;
+            SoundElement sound = new SoundElement(soundName, files, cat, subtitle);
+            workspace.removeSoundElement(sound);
             workspace.addSoundElement(sound);
 
-            String subtitle = subtitleKey != null ? subtitleKey : "subtitles." + workspace.getWorkspaceSettings().getModID() + "." + soundName;
             String displayName = host.capitalize(soundName) + " sound";
             addLocalization(workspace, "en_us", subtitle, displayName);
 

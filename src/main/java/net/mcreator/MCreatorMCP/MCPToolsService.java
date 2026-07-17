@@ -13,6 +13,9 @@ import net.mcreator.element.types.Fluid;
 import net.mcreator.element.types.interfaces.LimitedOptions;
 import net.mcreator.element.types.interfaces.Numeric;
 import net.mcreator.element.util.GEValidator;
+import net.mcreator.generator.Generator;
+import net.mcreator.generator.GeneratorFile;
+import net.mcreator.generator.template.TemplateGeneratorException;
 import net.mcreator.generator.mapping.MappableElement;
 import net.mcreator.minecraft.DataListLoader;
 import net.mcreator.ui.MCreator;
@@ -244,6 +247,10 @@ public class MCPToolsService {
         // Advanced tools (events, workflows, Bedrock packs, test reporting)
         new McpAdvancedToolsService(this, mcpServer, mcreator).registerTools();
 
+        // Extra tools (tags, creative tabs, backups, generator switching, procedure editing,
+        // in-game verification, model validation/conversion)
+        new McpExtraToolsService(this, mcpServer, mcreator).registerTools();
+
         LOG.info("Registered {} MCreator tools", mcpServer.getToolCount());
     }
 
@@ -254,14 +261,17 @@ public class MCPToolsService {
         LOG.info("Executing buildWorkspace tool");
 
         try {
-            if (mcreator.getWorkspace() == null) {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
                 return createErrorResult("No workspace loaded");
             }
 
-            // Execute build on EDT
-            javax.swing.SwingUtilities.invokeAndWait(() -> {
-                mcreator.getActionRegistry().buildWorkspace.doAction();
-            });
+            McpTypes.ToolResult regenResult = regenerateWorkspaceCode(workspace);
+            if (Boolean.TRUE.equals(regenResult.getIsError()))
+                return regenResult;
+
+            // Trigger the Gradle build task via the MCreator console
+            mcreator.getGradleConsole().exec("build");
 
             return createSuccessResult("Workspace build initiated successfully");
 
@@ -308,19 +318,47 @@ public class MCPToolsService {
         LOG.info("Executing regenerateCode tool");
 
         try {
-            if (mcreator.getWorkspace() == null) {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
                 return createErrorResult("No workspace loaded");
             }
 
-            // Execute regenerate code on EDT
-            javax.swing.SwingUtilities.invokeAndWait(() -> {
-                mcreator.getActionRegistry().regenerateCode.doAction();
-            });
-
-            return createSuccessResult("Code regeneration initiated successfully");
+            return regenerateWorkspaceCode(workspace);
 
         } catch (Exception e) {
             LOG.error("Error regenerating code", e);
+            return createErrorResult("Failed to regenerate code: " + e.getMessage());
+        }
+    }
+
+    private McpTypes.ToolResult regenerateWorkspaceCode(Workspace workspace) {
+        try {
+            Generator generator = workspace.getGenerator();
+            if (generator == null)
+                return createErrorResult("No generator available for the workspace");
+
+            generator.generateBase(true);
+
+            int generated = 0;
+            for (ModElement me : workspace.getModElements()) {
+                GeneratableElement ge = me.getGeneratableElement();
+                if (ge == null)
+                    continue;
+
+                List<GeneratorFile> files = generator.generateElement(ge, true, true);
+                if (files != null && !files.isEmpty())
+                    generated++;
+            }
+
+            generator.runResourceSetupTasks();
+            workspace.markDirty();
+
+            return createSuccessResult("Code regenerated for " + generated + " elements");
+        } catch (TemplateGeneratorException e) {
+            LOG.error("Template generation error", e);
+            return createErrorResult("Template generation failed: " + e.getMessage());
+        } catch (Exception e) {
+            LOG.error("Error regenerating workspace code", e);
             return createErrorResult("Failed to regenerate code: " + e.getMessage());
         }
     }

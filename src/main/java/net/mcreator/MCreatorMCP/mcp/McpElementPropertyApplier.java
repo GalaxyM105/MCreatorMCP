@@ -637,14 +637,21 @@ public class McpElementPropertyApplier {
 		List<TabEntry> tabs = new ArrayList<>();
 		if (value instanceof String s) {
 			if (!s.isEmpty())
-				tabs.add(new TabEntry(workspace, s.toUpperCase(Locale.ROOT)));
+				tabs.add(new TabEntry(workspace, normalizeCreativeTab(s)));
 		} else if (value instanceof List<?> list) {
 			for (Object o : list) {
 				if (o != null && !String.valueOf(o).isEmpty())
-					tabs.add(new TabEntry(workspace, String.valueOf(o).toUpperCase(Locale.ROOT)));
+					tabs.add(new TabEntry(workspace, normalizeCreativeTab(String.valueOf(o))));
 			}
 		}
 		setField(ge, "creativeTabs", tabs);
+	}
+
+	private String normalizeCreativeTab(String s) {
+		// Custom tab references are CUSTOM:<Name> and must keep mixed case.
+		if (s.startsWith("CUSTOM:") || s.startsWith("custom:"))
+			return s;
+		return s.toUpperCase(Locale.ROOT);
 	}
 
 	private void setRepairItems(GeneratableElement ge, Object value) {
@@ -899,7 +906,11 @@ public class McpElementPropertyApplier {
 
 			Constructor<?> ctor = type.getDeclaredConstructor(Workspace.class, String.class);
 			ctor.setAccessible(true);
-			if (type.getSimpleName().equals("StepSound") || type.getSimpleName().equals("TabEntry")) {
+			if (type.getSimpleName().equals("StepSound")) {
+				s = s.toUpperCase(Locale.ROOT);
+			}
+			if (type.getSimpleName().equals("TabEntry") && !s.contains(":")) {
+				// Vanilla creative tab datalist keys are uppercase; custom tab references use CUSTOM:<Name>.
 				s = s.toUpperCase(Locale.ROOT);
 			}
 			return (MappableElement) ctor.newInstance(workspace, s);

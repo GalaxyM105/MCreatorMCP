@@ -94,3 +94,39 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 ## Build Artifacts
 - Plugin ZIP: `/home/ubuntu/repos/MCreatorMCP/build/libs/MCreatorMCP.zip`
 - Test mod JAR: `/home/ubuntu/MCreatorWorkspaces/MCPTtest7/build/libs/modid-1.0.jar`
+
+## Phase 3 Tests — Tags, Creative Tabs, Backups, Generators, Procedures, In-Game Verification
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `createTag` | `gems`, `ITEMS`, entries `[minecraft:diamond, minecraft:emerald, CUSTOM:TestItem]` | created tag; `gems.json` generated with `mcptest7:test_item` |
+| `updateTag` | add `CUSTOM:TestItem` to `gems` | updated; custom references normalized through `NameMapper` reverse-lookup |
+| `deleteTag` | `gems2` / `gems3` / `Gems` | deleted workspace tags and stale generated JSON files |
+| `listTags` | no args | returned `ruby_ores` (BLOCKS) and `gems` (ITEMS) with managed/unmanaged entry info |
+| `createCreativeTab` | `RubyTab`, icon `Items.DIAMOND` | created `Tab` element; generated `Mcptest7ModTabs.java` |
+| `updateCreativeTabs` | `RubyTab` -> `[TestItem, SapphireBlock, TestBlock]` | items/blocks linked via `CUSTOM:RubyTab` and rendered in tab |
+| `listCreativeTabs` | no args | returned tab elements and tab order |
+| `createBackup` / `listBackups` / `restoreBackup` | partial name match | checkpoint created, listed, restored |
+| `listProcedures` | no args | returned `TestItemOnRightClickedInAir` and `ProcRightClick` XML lengths |
+| `updateProcedure` | replace `ProcRightClick` Blockly XML | XML persisted and procedure regenerated |
+| `switchGenerator` / `listGenerators` | list only | current generator `neoforge-1.21.1`; datapack/Bedrock add-on generators listed |
+| `validateModel` | `ruby_block_model.json` | validated JSON model has textures and parent |
+| `convertModel` | `ruby_block_model.json` -> `block/ruby_block_model` | no-op for already-JSON; OBJ parsing implemented |
+| `verifyServerLoads` | `timeoutSeconds=120` | server reached `Done (...)`; no `[ERROR]` lines in `latest.log` |
+| `verifyClientLoads` | `timeoutSeconds=120` | client created texture atlas; only OpenAL/SoundSystem error (headless/no audio device) |
+| `buildForJavaEdition` | no args | produced `modid-1.0.jar` |
+
+### Phase 3 Fixes Verified
+- `regenerateCode`/`buildWorkspace` now call `Generator.generateBase(true)`, iterate all `ModElement`s with `Generator.generateElement(..., true, true)`, and `runResourceSetupTasks()`.
+- Custom tag references (`CUSTOM:TestItem`) now map to `<modid>:test_item` in generated tag JSON.
+- Tag resource paths are lowercased by `normalizeTagName` to avoid `Invalid path in pack` warnings.
+- `deleteTag` removes stale generated tag JSONs from `src/main/resources` and `build/resources/main`.
+- `TabEntry` custom names keep original case (`CUSTOM:RubyTab`) so the generator registers the correct creative tab.
+- `createSoundEvent` removes an existing `SoundElement` before re-adding, and uses `subtitles.<soundName>` consistently for `sounds.json` and localization.
+- `verifyServerLoads` checks `[Server thread/INFO] ... Done (` and `verifyClientLoads` checks `[Render thread/INFO] ... Created: ... blocks.png-atlas` across the full tail of the log.
+
+## Known Issues / Notes (Post-Phase 3)
+1. Headless client verification reports a single OpenAL `SoundSystem` error because the VM has no audio device. This is environmental and does not affect mod functionality.
+2. Old pre-normalization test elements from `MCPTtest8` (and early `MCPTtest7` elements) may still be flagged if they are loaded in a workspace; fresh elements validate cleanly.
+3. `verifyServerLoads`/`verifyClientLoads` error counts may include stale `/ERROR` lines from previous runs when logs are not rotated. The status field is the reliable pass/fail signal.
+4. Bedrock pack tools write manifest and element JSON files into the workspace; full Bedrock build output depends on selecting the Bedrock add-on generator and running `buildBedrockProject`.
