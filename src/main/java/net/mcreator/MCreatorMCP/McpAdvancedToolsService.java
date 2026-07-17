@@ -89,6 +89,14 @@ public class McpAdvancedToolsService {
                         ))
                 ), "elementName", "eventType"),
                 params -> registerEventListener(params));
+        mcpServer.registerTool("createProcedureAndAttach", "Create a procedure and immediately attach it to an element event",
+                host.objectSchema(host.props(
+                        "procedureName", host.stringSchema("New procedure name"),
+                        "elementName", host.stringSchema("Element name to attach to"),
+                        "eventType", host.stringSchema("Event field name, e.g. onRightClicked"),
+                        "xml", host.stringSchema("Blockly XML (optional)")
+                ), "procedureName", "elementName", "eventType"),
+                params -> createProcedureAndAttach(params));
 
         // Compound workflow tools
         mcpServer.registerTool("createModWithTemplate", "Create a complete mod from a template",
@@ -316,6 +324,22 @@ public class McpAdvancedToolsService {
             LOG.error("Error updating event procedure", e);
             return host.createErrorResult("Failed to update event procedure: " + e.getMessage());
         }
+    }
+
+    private McpTypes.ToolResult createProcedureAndAttach(Map<String, Object> params) {
+        String procedureName = (String) params.get("procedureName");
+        String elementName = (String) params.get("elementName");
+        String eventType = (String) params.get("eventType");
+        String xml = (String) params.get("xml");
+
+        if (procedureName == null || elementName == null || eventType == null)
+            return host.createErrorResult("procedureName, elementName, and eventType are required");
+
+        McpTypes.ToolResult createResult = createProcedure(Map.of("elementName", procedureName, "xml", xml != null ? xml : ""));
+        if (Boolean.TRUE.equals(createResult.getIsError()))
+            return createResult;
+
+        return doUpdateEventProcedure(elementName, eventType, procedureName, xml);
     }
 
     // ------------------------------------------------------------------

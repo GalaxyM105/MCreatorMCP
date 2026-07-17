@@ -10,7 +10,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - Health endpoint: `http://localhost:5175/health`
 
 ## Tool Count
-`tools/list` returned **146 tools** after the Phase 6 GUI/Overlay/Structure/model/advanced-block/in-world/workspace/API expansion (all previous categories + full GUI/Overlay component editing + Structure NBT import + entity model/animation pipeline + advanced block property aliases + in-world automated block/entity testing + workspace export/import + installed plugin/mod API integration helpers).
+`tools/list` returned **151 tools** after the Phase 7 custom-model/directional-block/procedure-first/datapack-diagnostic expansion (all previous categories + `bindCustomModel` JSON/OBJ/Java model binding + `createProcedureAndAttach` + `createDatapackStructure`/`createDatapackOre` + `diagnoseBuildErrors`).
 
 ## Core Workspace Tools
 
@@ -226,9 +226,28 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - `McpLifecycleToolsService` adds workspace import/export, recent-workspace listing, installed plugin listing, and mod API enable/disable helpers.
 - `GameRule` displayName and `LivingEntity` mobName/label/behaviour/creatureType/aiBase/aixml are now defaulted in `postProcess` to prevent `GEValidator` load failures.
 
-### Known Issues / Notes (Post-Phase 6)
+### Phase 7 Tests — Custom Model Binding, Directional/Multi-Texture Blocks, Procedure-First Creation, Datapack-Only JSON Writers, Build-Error Diagnostics
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `bindCustomModel` (block, JSON) | `elementName=JsonModelBlock`, `modelName=test_model`, `modelType=json`, `texture=ruby_block_texture`, `modelDefinition={parent:block/cube_all,...}` | wrote `test_model.json` + `test_model.json.textures` to `models/`; bound `customModelName` and `renderType`; `regenerateCode` and `buildForJavaEdition` succeeded; server reached `Done!` |
+| `createBlock` (multi-face) | `elementName=MultiFaceBlock`, `textures={top:ruby_block_texture, bottom:ruby_ore, side:ruby_block_texture}` | created block with per-face textures; `regenerateCode` / `buildForJavaEdition` succeeded; server loaded the mod |
+| `createProcedureAndAttach` | `procedureName=ClickableItem_RightAir`, `elementName=ClickableItem`, `eventType=onRightClickedInAir` | created procedure and linked it to item event in one call; generated `ClickableItem_RightAirProcedure.class` and `ClickableItem_OnRightClickedInAirProcedure.class` |
+| `createDatapackStructure` | `structureName=TestTower`, `nbtName=test_tower`, `biomeTag=minecraft:is_forest` | wrote `mcptest7:worldgen/structure/testtower.json`, `template_pool/testtower.json`, `structure_set/testtower.json` with valid jigsaw fields; server loaded without datapack registry errors |
+| `createDatapackOre` | `oreName=TestSapphireOre`, `blockState=mcptest7:sapphire_block`, `replaceableTag=minecraft:stone_ore_replaceables` | wrote `configured_feature/testsapphireore.json` and `placed_feature/testsapphireore.json`; server loaded cleanly |
+| `createDatapackFeature` | `featureName=SimplePlant`, `featureType=simple_block`, `state=minecraft:short_grass` | wrote valid configured/placed feature pair |
+| `diagnoseBuildErrors` | `logName=latest`, `lines=200` | parsed `latest.log`, categorized `Skipping villager profession` / advancement / tag errors and returned structured `errorCount` + suggestions |
+
+### Phase 7 Fixes Verified
+- `McpLifecycleToolsService` registers and implements `bindCustomModel` for JSON/OBJ/Java models. For JSON it writes the companion `.json.textures` mapping file that `net.mcreator.workspace.resources.TexturedModel.getTextureMappingsForModel` requires, sets `renderType` correctly for blocks and items, and applies the model through `McpElementPropertyApplier`.
+- `McpElementPropertyApplier` now defaults `Block.customModelName` to `elementName` for custom render types and `Normal` for built-in renders, initializes `Block.boundingBoxes` to a full-cube box, and adds an `Item` post-processing branch with `customModelName` and `specialInformation` defaults. `applyBlockTextureMap` now supports per-face `top`/`bottom`/`side`/`front`/`back`/`left`/`right` texture keys.
+- `McpAdvancedToolsService` registers `createProcedureAndAttach`, which calls `createProcedure` and then `doUpdateEventProcedure` in one step.
+- `McpPublishingAndVerificationService` registers `createDatapackStructure`, `createDatapackOre`, and `diagnoseBuildErrors`. Datapack writers use `workspace.getWorkspaceSettings().getModID()` as the namespace, generate valid jigsaw/template_pool/structure_set/placed_feature JSON, and prefix biome tags with `#`.
+- `diagnoseBuildErrors` scans the selected log, categorizes FreeMarker, missing-reference, validation, missing-texture, recipe, network, and generic errors, and returns a JSON report with per-line suggestions.
+
+### Known Issues / Notes (Post-Phase 7)
 1. `executeServerCommand` still requires an RCON-enabled server; use `runTestScenario()` for automated command chains.
 2. `publishToModrinth`/`publishToCurseForge` are end-to-end wired but return 401/404 when using dummy credentials; a real API token/project ID is required for actual uploads.
 3. The test workspace contains overlapping villager-profession POI blocks and an advancement with a missing item, which produce non-fatal server log errors.
 4. `importWorkspace` extracts the workspace `.zip` but cannot automatically open it in the running MCreator window; open the extracted `.mcreator` file manually or restart MCreator with that path.
-4. Multi-workspace/no-workspace mode and safe generator migration are not exposed as tools because MCreator's active `MCreator` instance is bound to a single workspace window; these remain documented limitations.
+5. Multi-workspace/no-workspace mode and safe generator migration are not exposed as tools because MCreator's active `MCreator` instance is bound to a single workspace window; these remain documented limitations.

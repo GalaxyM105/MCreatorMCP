@@ -132,6 +132,16 @@ public class McpLifecycleToolsService {
 						"modelName", host.stringSchema("Output model name")
 				), "sourcePath", "modelName"),
 				params -> convertBlockbenchModel(params));
+		mcpServer.registerTool("bindCustomModel", "Bind an imported/generated JSON/OBJ/Java model to a block or item",
+				host.objectSchema(host.props(
+							"elementName", host.stringSchema("Block or item element name"),
+							"modelName", host.stringSchema("Model name (filename without extension)"),
+							"modelType", host.stringSchema("Model type: json, obj, java"),
+							"sourcePath", host.stringSchema("Optional source model file path to import"),
+							"modelDefinition", host.objectPropSchema("Optional JSON model definition object (used if sourcePath is not given)"),
+							"texture", host.stringSchema("Optional texture name to set as the main texture")
+				), "elementName", "modelName", "modelType"),
+				params -> bindCustomModel(params));
 
 		// CI / automation
 		mcpServer.registerTool("runGradleTask", "Run an arbitrary Gradle task in the workspace",
@@ -644,6 +654,103 @@ public class McpLifecycleToolsService {
 		} catch (Exception e) {
 			LOG.error("Error converting Blockbench model", e);
 			return host.createErrorResult("Failed to convert Blockbench model: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult bindCustomModel(Map<String, Object> params) {
+		String elementName = stringParam(params, "elementName");
+		String modelName = stringParam(params, "modelName");
+		String modelType = stringParam(params, "modelType", "json").toLowerCase(Locale.ROOT);
+		String sourcePath = stringParam(params, "sourcePath");
+		String textureName = stringParam(params, "texture");
+
+		if (elementName == null || modelName == null)
+			return host.createErrorResult("elementName and modelName are required");
+
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+
+			ModElement me = workspace.getModElementByName(elementName);
+			if (me == null) return host.createErrorResult("Element not found: " + elementName);
+
+			GeneratableElement ge = me.getGeneratableElement();
+			if (ge == null) return host.createErrorResult("Element has no generatable data");
+
+			File modelsDir = workspace.getFolderManager().getModelsDir();
+			modelsDir.mkdirs();
+
+			String extension = switch (modelType) {
+				case "obj" -> ".obj";
+				case "java" -> ".java";
+				default -> ".json";
+			};
+			String safeModelName = modelName.replaceAll("\\.(json|obj|java)$", "");
+			File modelFile = new File(modelsDir, safeModelName + extension);
+
+			if (sourcePath != null && !sourcePath.isEmpty()) {
+				File source = new File(sourcePath);
+				if (!source.exists()) return host.createErrorResult("Source model file not found: " + sourcePath);
+				Files.copy(source.toPath(), modelFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			} else {
+				Object definition = params.get("modelDefinition");
+				if (definition instanceof Map<?, ?> defMap) {
+					if ("json".equals(modelType) || "custom".equals(modelType)) {
+						objectMapper.writerWithDefaultPrettyPrinter().writeValue(modelFile, defMap);
+					} else {
+						return host.createErrorResult("modelDefinition is only supported for json model type");
+					}
+				} else if (!modelFile.exists()) {
+					return host.createErrorResult("No sourcePath or modelDefinition provided and model file does not exist");
+				}
+			}
+
+			if (("json".equals(modelType) || "custom".equals(modelType)) && modelFile.exists()) {
+				File texturesFile = new File(modelsDir, safeModelName + ".json.textures");
+				if (!texturesFile.exists()) {
+					ObjectNode texturesRoot = objectMapper.createObjectNode();
+					ObjectNode mapping = texturesRoot.putObject("mappings").putObject("default");
+					mapping.put("name", "default");
+					ObjectNode map = mapping.putObject("map");
+					if (textureName != null && !textureName.isEmpty()) {
+						map.putObject("all").put("texture", textureName);
+					}
+					objectMapper.writerWithDefaultPrettyPrinter().writeValue(texturesFile, texturesRoot);
+				}
+			}
+
+			Map<String, Object> props = new LinkedHashMap<>();
+			props.put("customModelName", safeModelName);
+			if (textureName != null && !textureName.isEmpty()) {
+				props.put("texture", textureName);
+			}
+
+			if (ge instanceof net.mcreator.element.types.Block block) {
+				int renderType = switch (modelType) {
+					case "obj" -> 3;
+					case "java" -> 4;
+					default -> 2;
+				};
+				props.put("renderType", renderType);
+			} else if (ge instanceof net.mcreator.element.types.Item item) {
+				int renderType = switch (modelType) {
+					case "obj" -> 2;
+					case "java" -> 3;
+					default -> 1;
+				};
+				props.put("renderType", renderType);
+			} else {
+				return host.createErrorResult("Element is not a block or item: " + elementName);
+			}
+
+			new McpElementPropertyApplier(workspace, me.getType().getRegistryName(), elementName).applyProperties(ge, props);
+			workspace.getModElementManager().storeModElement(ge);
+			workspace.markDirty();
+
+			return host.createSuccessResult("Bound model '" + safeModelName + "' to '" + elementName + "' as " + modelType);
+		} catch (Exception e) {
+			LOG.error("Error binding custom model", e);
+			return host.createErrorResult("Failed to bind custom model: " + e.getMessage());
 		}
 	}
 

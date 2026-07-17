@@ -99,6 +99,33 @@ public class McpPublishingAndVerificationService {
 						"properties", host.objectPropSchema("Bedrock component/properties object")
 				), "packName", "elementName"),
 				params -> createBedrockBehaviorJson(params));
+		mcpServer.registerTool("createDatapackStructure", "Write a datapack structure set JSON for a custom structure",
+				host.objectSchema(host.props(
+							"structureName", host.stringSchema("Structure name"),
+							"nbtName", host.stringSchema("NBT file name without .nbt extension"),
+							"biomeTag", host.stringSchema("Biome tag to place in (e.g. minecraft:is_overworld)"),
+							"spacing", host.stringSchema("Average distance between structures (default 20)"),
+							"separation", host.stringSchema("Minimum distance between structures (default 10)"),
+							"salt", host.stringSchema("Placement salt (default 0)")
+				), "structureName"),
+				params -> createDatapackStructure(params));
+		mcpServer.registerTool("createDatapackOre", "Write a datapack configured ore + placed feature pair",
+				host.objectSchema(host.props(
+							"oreName", host.stringSchema("Ore feature name"),
+							"blockState", host.stringSchema("Block to place (e.g. minecraft:iron_ore)"),
+							"replaceableTag", host.stringSchema("Replaceable block tag (default minecraft:stone_ore_replaceables)"),
+							"veinSize", host.stringSchema("Vein size (default 9)"),
+							"count", host.stringSchema("Placement count per chunk (default 10)"),
+							"heightRange", host.stringSchema("Height range object {min,max} (default {above_bottom:0,below_top:0})"),
+							"discardChance", host.stringSchema("Discard chance on air exposure (default 0.0)")
+				), "oreName"),
+				params -> createDatapackOre(params));
+		mcpServer.registerTool("diagnoseBuildErrors", "Parse build/server logs and return categorized errors with suggested fixes",
+				host.objectSchema(host.props(
+							"logName", host.stringSchema("Log name: latest, gradle, debug, client (default latest)"),
+							"lines", host.stringSchema("Lines to tail (default 200)")
+				)),
+				params -> diagnoseBuildErrors(params));
 
 		// Client verification
 		mcpServer.registerTool("verifyClientInGame", "Launch the Minecraft client in a virtual display and capture a screenshot",
@@ -268,7 +295,7 @@ public class McpPublishingAndVerificationService {
 		try {
 			Workspace workspace = mcreator.getWorkspace();
 			if (workspace == null) return host.createErrorResult("No workspace loaded");
-			String namespace = workspace.getWorkspaceSettings().getModName().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+			String namespace = workspace.getWorkspaceSettings().getModID().toLowerCase(Locale.ROOT);
 			File dataDir = new File(workspace.getFolderManager().getWorkspaceFolder(),
 					"src/main/resources/data/" + namespace + "/worldgen");
 
@@ -338,6 +365,200 @@ public class McpPublishingAndVerificationService {
 			return host.createSuccessResult("Wrote datapack feature files for " + featureName + " (" + configuredFile.getAbsolutePath() + ")");
 		} catch (Exception e) {
 			return host.createErrorResult("Failed to write datapack feature: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult createDatapackStructure(Map<String, Object> params) {
+		String structureName = stringParam(params, "structureName");
+		if (structureName == null) return host.createErrorResult("structureName is required");
+		String safeName = structureName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			String namespace = workspace.getWorkspaceSettings().getModID().toLowerCase(Locale.ROOT);
+			File dataDir = new File(workspace.getFolderManager().getWorkspaceFolder(),
+					"src/main/resources/data/" + namespace + "/worldgen");
+
+			String biomeTag = stringParam(params, "biomeTag", "minecraft:is_overworld");
+
+			ObjectNode structure = objectMapper.createObjectNode();
+			structure.put("type", "minecraft:jigsaw");
+			structure.put("biomes", biomeTag.startsWith("#") ? biomeTag : "#" + biomeTag);
+			structure.put("start_pool", namespace + ":" + safeName);
+			structure.put("size", 1);
+			ObjectNode startHeight = structure.putObject("start_height");
+			startHeight.put("absolute", 0);
+			structure.put("project_start_to_heightmap", "WORLD_SURFACE_WG");
+			structure.put("max_distance_from_center", 80);
+			structure.put("use_expansion_hack", false);
+			structure.put("step", "surface_structures");
+			structure.put("terrain_adaptation", "beard_box");
+			structure.set("spawn_overrides", objectMapper.createObjectNode());
+
+			File structureDir = new File(dataDir, "structure");
+			structureDir.mkdirs();
+			File structureFile = new File(structureDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(structureFile, structure);
+
+			ObjectNode templatePool = objectMapper.createObjectNode();
+			templatePool.put("fallback", "minecraft:empty");
+			ArrayNode elements = templatePool.putArray("elements");
+			ObjectNode element = elements.addObject();
+			element.put("weight", 1);
+			ObjectNode elementLocation = element.putObject("element");
+			elementLocation.put("element_type", "minecraft:single_pool_element");
+			elementLocation.put("location", namespace + ":" + stringParam(params, "nbtName", safeName));
+			elementLocation.put("projection", "rigid");
+			elementLocation.put("processors", "minecraft:empty");
+
+			File poolDir = new File(dataDir, "template_pool");
+			poolDir.mkdirs();
+			File poolFile = new File(poolDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(poolFile, templatePool);
+
+			ObjectNode structureSet = objectMapper.createObjectNode();
+			ArrayNode structures = structureSet.putArray("structures");
+			ObjectNode structEntry = structures.addObject();
+			structEntry.put("structure", namespace + ":" + safeName);
+			structEntry.put("weight", 1);
+			ObjectNode placement = structureSet.putObject("placement");
+			placement.put("salt", toInt(params.get("salt"), 0));
+			placement.put("spacing", toInt(params.get("spacing"), 20));
+			placement.put("separation", toInt(params.get("separation"), 10));
+			placement.put("type", "minecraft:random_spread");
+
+			File setDir = new File(dataDir, "structure_set");
+			setDir.mkdirs();
+			File setFile = new File(setDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(setFile, structureSet);
+
+			return host.createSuccessResult("Wrote datapack structure files for " + structureName + " to " + setFile.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to write datapack structure: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult createDatapackOre(Map<String, Object> params) {
+		String oreName = stringParam(params, "oreName");
+		if (oreName == null) return host.createErrorResult("oreName is required");
+		String safeName = oreName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			String namespace = workspace.getWorkspaceSettings().getModID().toLowerCase(Locale.ROOT);
+			File dataDir = new File(workspace.getFolderManager().getWorkspaceFolder(),
+					"src/main/resources/data/" + namespace + "/worldgen");
+
+			String blockState = stringParam(params, "blockState", "minecraft:iron_ore");
+			String replaceableTag = stringParam(params, "replaceableTag", "minecraft:stone_ore_replaceables");
+			int veinSize = toInt(params.get("veinSize"), 9);
+			float discardChance = (float) toDouble(params.get("discardChance"), 0.0);
+
+			ObjectNode configured = objectMapper.createObjectNode();
+			configured.put("type", "minecraft:ore");
+			ObjectNode config = configured.putObject("config");
+			ArrayNode targets = config.putArray("targets");
+			ObjectNode target = targets.addObject();
+			target.set("target", toJsonNode(Map.of("predicate_type", "minecraft:tag_match", "tag", replaceableTag)));
+			ObjectNode stateObj = target.putObject("state");
+			stateObj.put("Name", blockState);
+			config.put("size", veinSize);
+			config.put("discard_chance_on_air_exposure", discardChance);
+
+			File configuredDir = new File(dataDir, "configured_feature");
+			configuredDir.mkdirs();
+			File configuredFile = new File(configuredDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(configuredFile, configured);
+
+			ObjectNode placed = objectMapper.createObjectNode();
+			placed.put("feature", namespace + ":" + safeName);
+			ArrayNode placement = placed.putArray("placement");
+			ObjectNode countPlacement = placement.addObject();
+			countPlacement.put("type", "minecraft:count");
+			ObjectNode countObj = countPlacement.putObject("count");
+			countObj.put("type", "minecraft:uniform").put("min_inclusive", 1).put("max_inclusive", toInt(params.get("count"), 10));
+			placement.addObject().put("type", "minecraft:in_square");
+			ObjectNode heightRange = placement.addObject();
+			heightRange.put("type", "minecraft:height_range");
+			ObjectNode height = heightRange.putObject("height");
+			height.put("type", "minecraft:uniform");
+			Object heightRangeParam = params.get("heightRange");
+			int minHeight = 0, maxHeight = 0;
+			if (heightRangeParam instanceof Map<?, ?> hm) {
+				minHeight = toInt(hm.get("min"), 0);
+				maxHeight = toInt(hm.get("max"), 0);
+				if (hm.get("above_bottom") != null) minHeight = toInt(hm.get("above_bottom"), 0);
+				if (hm.get("below_top") != null) maxHeight = toInt(hm.get("below_top"), 0);
+			}
+			height.set("min_inclusive", toJsonNode(Map.of("above_bottom", minHeight)));
+			height.set("max_inclusive", toJsonNode(Map.of("below_top", maxHeight)));
+			placement.addObject().put("type", "minecraft:biome");
+
+			File placedDir = new File(dataDir, "placed_feature");
+			placedDir.mkdirs();
+			File placedFile = new File(placedDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(placedFile, placed);
+
+			return host.createSuccessResult("Wrote datapack ore files for " + oreName + " (" + configuredFile.getAbsolutePath() + ")");
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to write datapack ore: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult diagnoseBuildErrors(Map<String, Object> params) {
+		String logName = stringParam(params, "logName", "latest");
+		int lines = toInt(params.get("lines"), 200);
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			File workspaceFolder = workspace.getFolderManager().getWorkspaceFolder();
+			File logFile;
+			switch (logName.toLowerCase(Locale.ROOT)) {
+			case "gradle" -> logFile = new File(workspaceFolder, "run/logs/gradle_runserver.log");
+			case "debug" -> logFile = new File(workspaceFolder, "run/logs/debug.log");
+			case "client" -> logFile = new File(workspaceFolder, "run/logs/client_run.log");
+			default -> logFile = new File(workspaceFolder, "run/logs/latest.log");
+			}
+			if (!logFile.exists()) return host.createErrorResult("Log file not found: " + logFile);
+			List<String> tail = tailLog(logFile, lines);
+			List<Map<String, Object>> errors = new ArrayList<>();
+			for (String line : tail) {
+				Map<String, Object> err = new LinkedHashMap<>();
+				if (line.contains("FreeMarker") || line.contains("TemplateException") || line.contains("?interpret")) {
+					err.put("category", "freemarker");
+					err.put("suggestion", "A mod element references a missing or invalid field. Regenerate code after fixing the element.");
+				} else if (line.contains("InvalidReferenceException") || line.contains("undefined")) {
+					err.put("category", "missing_reference");
+					err.put("suggestion", "A template expects a field that is null. Add a default value for that element type.");
+				} else if (line.contains("GEValidator") || line.contains("ValidationException")) {
+					err.put("category", "validation");
+					err.put("suggestion", "A mod element is missing a required field. Open the element or update its properties.");
+				} else if (line.contains("Could not find") || line.contains("missing texture") || line.contains("Texture") && line.contains("not found")) {
+					err.put("category", "missing_texture");
+					err.put("suggestion", "Import or create the missing texture and regenerate code.");
+				} else if (line.contains("recipe") && (line.contains("Parsing") || line.contains("Unknown") || line.contains("Invalid"))) {
+					err.put("category", "recipe");
+					err.put("suggestion", "Check recipe inputs/outputs reference valid existing items/blocks.");
+				} else if (line.contains("java.net") || line.contains("RCON") || line.contains("Connection refused")) {
+					err.put("category", "network");
+					err.put("suggestion", "Verify the server is running and RCON is enabled.");
+				} else if (line.contains("/ERROR") || line.contains("Exception") || line.contains("Caused by")) {
+					err.put("category", "general");
+					err.put("suggestion", "Review the stack trace and the element that triggered it.");
+				} else {
+					continue;
+				}
+				err.put("line", line);
+				errors.add(err);
+			}
+			Map<String, Object> result = new LinkedHashMap<>();
+			result.put("logFile", logFile.getAbsolutePath());
+			result.put("scannedLines", tail.size());
+			result.put("errorCount", errors.size());
+			result.put("errors", errors);
+			return host.createSuccessResult(objectMapper.writeValueAsString(result));
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to diagnose build errors: " + e.getMessage());
 		}
 	}
 
@@ -460,7 +681,7 @@ public class McpPublishingAndVerificationService {
 				List<String> winCmd = List.of("/opt/.devin/package/custom_binaries/xdotool", "search", "--name", "Minecraft", "--sync", "--onlyvisible");
 				String win = runCommand(winCmd).trim();
 				if (!win.isEmpty()) {
-					String[] ids = win.split("\s+");
+					String[] ids = win.split("\\s+");
 					for (String id : ids) {
 						if (!id.isEmpty()) {
 							runCommand(List.of("/opt/.devin/package/custom_binaries/xdotool", "key", "--window", id, "F2"));
@@ -550,6 +771,16 @@ public class McpPublishingAndVerificationService {
 		if (value instanceof Number n) return n.intValue();
 		try {
 			return Integer.parseInt(String.valueOf(value));
+		} catch (Exception e) {
+			return defaultValue;
+		}
+	}
+
+	private double toDouble(Object value, double defaultValue) {
+		if (value == null) return defaultValue;
+		if (value instanceof Number n) return n.doubleValue();
+		try {
+			return Double.parseDouble(String.valueOf(value));
 		} catch (Exception e) {
 			return defaultValue;
 		}

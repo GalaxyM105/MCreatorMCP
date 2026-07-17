@@ -97,7 +97,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **146 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, lifecycle, fine-grained editing, texture/model processing, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, and addon/plugin integration categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **151 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, lifecycle, fine-grained editing, texture/model processing, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, and build-error diagnostics. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
@@ -130,6 +130,7 @@ The MCP server now exposes **146 tools** across workspace, element, asset, build
 - `deleteTexture(textureName, textureType)` - Delete a texture
 - `listModels()` - List custom models
 - `importModel(modelName, sourcePath)` - Import a model (Java JSON/OBJ)
+- `bindCustomModel(elementName, modelName, modelType, sourcePath?, modelDefinition?, texture?)` - Bind an imported/generated JSON/OBJ/Java model to a block or item (writes the companion `.json.textures` mapping for JSON models)
 - `deleteModel(modelName)` - Delete a model
 - `getAssetMetadata(assetName, assetType)` - Get asset metadata
 
@@ -155,13 +156,15 @@ The MCP server now exposes **146 tools** across workspace, element, asset, build
 - `runClient()` - Start the Minecraft client
 - `runServer()` - Start the Minecraft server
 
-### Log Streaming & Build Progress
+### Log Streaming, Build Progress & Diagnostics
 - `getLatestLog(lines?, logName?)` - Tail `run/logs/latest.log` or `debug.log`
 - `getGradleLog(lines?)` - Tail the Gradle runserver/build log
 - `getBuildProgress(maxChars?)` - Return the current Gradle console status (`READY`/`RUNNING`/`ERROR`) and the tail of its output
+- `diagnoseBuildErrors(logName?, lines?)` - Parse a build/server log and return categorized errors with per-line suggested fixes
 
 ### Procedures, Events & Workflows
 - `createProcedure(elementName, xml?)` - Create a reusable Blockly procedure
+- `createProcedureAndAttach(procedureName, elementName, eventType, xml?)` - Create a procedure and immediately attach it to an element event in one call
 - `getEventProcedures(elementName)` - List all event/procedure hooks on a mod element
 - `updateEventProcedure(elementName, eventType, procedureName?, xml?)` - Attach or update an event procedure
 - `registerEventListener(elementName, eventType, actionDefinition)` - Alias for `updateEventProcedure` using an action definition object
@@ -183,6 +186,8 @@ The MCP server now exposes **146 tools** across workspace, element, asset, build
 
 ### Datapack-Only Worldgen
 - `createDatapackFeature(featureName, featureType?, target?, state?, count?)` - Write a vanilla datapack `configured_feature` + `placed_feature` JSON pair directly into the workspace data folder
+- `createDatapackStructure(structureName, nbtName?, biomeTag?, spacing?, separation?, salt?)` - Write a vanilla datapack `structure` + `template_pool` + `structure_set` JSON set directly into the workspace data folder
+- `createDatapackOre(oreName, blockState?, replaceableTag?, veinSize?, count?, heightRange?, discardChance?)` - Write a vanilla datapack `configured_feature` + `placed_feature` ore pair directly into the workspace data folder
 
 ### Publishing
 - `publishToModrinth(apiToken, projectId, versionNumber, changelog?, loaders?, gameVersions?, releaseType?, filePath?)` - Publish the built JAR to Modrinth
@@ -269,7 +274,14 @@ The MCP server now exposes **146 tools** across workspace, element, asset, build
 | `fireSpreadSpeed` | int | Fire spread speed |
 | `drops` | string / object | `{item: "minecraft:diamond", count: 1}` |
 | `hasTransparency` | bool | Whether the block is translucent |
-| `renderType` | int/string | `10`/`solid`, `12`/`cutout`, `translucent` |
+| `transparencyType` | string | `SOLID`, `CUTOUT`, `CUTOUT_MIPPED`, `TRANSLUCENT` |
+| `renderType` / `render` | int/string | `10`/`solid`, `12`/`cutout`, `cutout_mipped`, `translucent`, `json`, `obj`, `java` |
+| `rotationMode` / `rotation` | string | `none`, `y_axis`, `all_axis`, `block_y_axis`, `block_all_axis`, `log` |
+| `tintType` / `tint` | string | `No tint`, `Grass`, `Foliage`, `Water`, `Default foliage` |
+| `texture` / `textures` | string/object | Single texture name, or `{top, bottom, side, front, back, left, right, all}` |
+| `customModelName` / `model` | string | Custom model name for `json`/`obj`/`java` render types |
+| `particleTexture` / `particle` | string | Particle texture name |
+| `itemTexture` / `item` | string | Item/inventory texture name (defaults to block texture if omitted) |
 
 ### Tool / Armor / Food
 | Key | Type | Description |

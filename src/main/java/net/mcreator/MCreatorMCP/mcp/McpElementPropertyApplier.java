@@ -9,6 +9,7 @@ import net.mcreator.element.parts.procedure.Procedure;
 import net.mcreator.element.parts.procedure.RetvalProcedure;
 import net.mcreator.element.parts.procedure.StringListProcedure;
 import net.mcreator.element.types.*;
+import net.mcreator.element.types.interfaces.IBlockWithBoundingBox;
 import net.mcreator.element.util.GEValidator;
 import net.mcreator.generator.mapping.MappableElement;
 import net.mcreator.minecraft.DataListEntry;
@@ -21,6 +22,7 @@ import net.mcreator.util.yaml.YamlUtil;
 import net.mcreator.workspace.Workspace;
 import net.mcreator.workspace.elements.ModElement;
 import net.mcreator.workspace.references.TextureReference;
+import net.mcreator.workspace.resources.Model;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -186,8 +188,19 @@ public class McpElementPropertyApplier {
 
 		BLOCK_RENDER_TYPES.put("solid", 10);
 		BLOCK_RENDER_TYPES.put("cutout", 11);
-		BLOCK_RENDER_TYPES.put("translucent", 12);
-		BLOCK_RENDER_TYPES.put("cutout_mipped", 14);
+		BLOCK_RENDER_TYPES.put("cutout_mipped", 11);
+		BLOCK_RENDER_TYPES.put("translucent", 11);
+		BLOCK_RENDER_TYPES.put("cross", 12);
+		BLOCK_RENDER_TYPES.put("tinted_cross", 120);
+		BLOCK_RENDER_TYPES.put("crop", 13);
+		BLOCK_RENDER_TYPES.put("grass", 14);
+		BLOCK_RENDER_TYPES.put("leaves", 110);
+		BLOCK_RENDER_TYPES.put("flower_pot", 15);
+		BLOCK_RENDER_TYPES.put("tinted_flower_pot", 150);
+		BLOCK_RENDER_TYPES.put("json", 2);
+		BLOCK_RENDER_TYPES.put("custom", 2);
+		BLOCK_RENDER_TYPES.put("obj", 3);
+		BLOCK_RENDER_TYPES.put("java", 4);
 
 		ARMOR_PRESET_DURABILITY.put("leather", 80);
 		ARMOR_PRESET_VALUES.put("leather", new int[] { 1, 3, 2, 1 });
@@ -421,6 +434,22 @@ public class McpElementPropertyApplier {
 			}
 		}
 
+		if (ge instanceof Block block) {
+			Object render = properties.remove("render");
+			if (render == null)
+				render = properties.remove("renderType");
+			if (render != null) {
+				applyBlockRenderType(block, render);
+			}
+
+			Object textures = properties.get("textures");
+			if (textures instanceof Map<?, ?> m) {
+				@SuppressWarnings("unchecked")
+				Map<String, Object> map = (Map<String, Object>) m;
+				applyBlockTextureMap(block, map);
+			}
+		}
+
 		if (ge instanceof Structure structure) {
 			Object structureFile = properties.remove("structureFile");
 			if (structureFile != null) {
@@ -493,9 +522,47 @@ public class McpElementPropertyApplier {
 
 	private void postProcess(GeneratableElement ge) {
 		if (ge instanceof Block block) {
-			if (block.renderType == 0) {
-				block.renderType = block.hasTransparency ? 12 : 10;
+			if (block.transparencyType == null || block.transparencyType.isEmpty()) {
+				block.transparencyType = block.hasTransparency ? "CUTOUT" : "SOLID";
 			}
+			if (block.renderType == 0) {
+				block.renderType = block.hasTransparency ? 11 : 10;
+			}
+			if (block.states == null) block.states = new ArrayList<>();
+			if (block.boundingBoxes == null) block.boundingBoxes = new ArrayList<>();
+			if (block.customProperties == null) block.customProperties = new ArrayList<>();
+			if (block.animations == null) block.animations = new ArrayList<>();
+			if (block.fluidRestrictions == null) block.fluidRestrictions = new ArrayList<>();
+			if (block.blocksToReplace == null) block.blocksToReplace = new ArrayList<>();
+			if (block.restrictionBiomes == null) block.restrictionBiomes = new ArrayList<>();
+			if (block.vibrationalEvents == null) block.vibrationalEvents = new ArrayList<>();
+			if (block.specialInformation == null)
+				block.specialInformation = new StringListProcedure(null, new ArrayList<>());
+			if (block.inventoryOutSlotIDs == null) block.inventoryOutSlotIDs = new ArrayList<>();
+			if (block.inventoryInSlotIDs == null) block.inventoryInSlotIDs = new ArrayList<>();
+
+			if (block.customModelName == null || block.customModelName.isEmpty()) {
+				if (block.renderType == 2 || block.renderType == 3)
+					block.customModelName = elementName;
+				else
+					block.customModelName = "Normal";
+			}
+
+			if (block.boundingBoxes == null || block.boundingBoxes.isEmpty()) {
+				IBlockWithBoundingBox.BoxEntry box = new IBlockWithBoundingBox.BoxEntry();
+				box.mx = 0; box.my = 0; box.mz = 0;
+				box.Mx = 16; box.My = 16; box.Mz = 16;
+				box.subtract = false;
+				block.boundingBoxes = new ArrayList<>(List.of(box));
+			}
+
+		}
+
+		if (ge instanceof Item item) {
+			if (item.customModelName == null || item.customModelName.isEmpty())
+				item.customModelName = "Normal";
+			if (item.specialInformation == null)
+				item.specialInformation = new StringListProcedure(null, new ArrayList<>());
 		}
 
 		if (ge instanceof Fluid fluid) {
@@ -916,6 +983,54 @@ public class McpElementPropertyApplier {
 		return false;
 	}
 
+	private void applyBlockRenderType(Block block, Object value) {
+		if (value instanceof Number n) {
+			block.renderType = n.intValue();
+			return;
+		}
+
+		String s = String.valueOf(value).toLowerCase(Locale.ROOT).replace(" ", "_").replace("-", "_");
+		if (BLOCK_RENDER_TYPES.containsKey(s)) {
+			block.renderType = BLOCK_RENDER_TYPES.get(s);
+		} else if (s.matches("\\d+")) {
+			block.renderType = Integer.parseInt(s);
+		} else {
+			block.renderType = 10;
+		}
+
+		switch (s) {
+			case "solid" -> {
+				block.hasTransparency = false;
+				block.transparencyType = "SOLID";
+			}
+			case "cutout" -> {
+				block.hasTransparency = true;
+				block.transparencyType = "CUTOUT";
+			}
+			case "cutout_mipped" -> {
+				block.hasTransparency = true;
+				block.transparencyType = "CUTOUT_MIPPED";
+			}
+			case "translucent" -> {
+				block.hasTransparency = true;
+				block.transparencyType = "TRANSLUCENT";
+			}
+			case "cross", "tinted_cross", "crop", "flower_pot", "tinted_flower_pot" -> {
+				block.hasTransparency = true;
+				block.transparencyType = "CUTOUT";
+			}
+			case "grass", "leaves" -> {
+				block.hasTransparency = true;
+				block.transparencyType = "CUTOUT_MIPPED";
+			}
+			case "json", "custom", "obj", "java" -> {
+				if (block.transparencyType == null || block.transparencyType.isEmpty()) {
+					block.transparencyType = block.hasTransparency ? "CUTOUT" : "SOLID";
+				}
+			}
+		}
+	}
+
 	private void applyBlockSingleTexture(Block block, Object value) {
 		TextureHolder holder = toTextureHolder(value, TextureType.BLOCK);
 		setField(block, "texture", holder);
@@ -950,6 +1065,18 @@ public class McpElementPropertyApplier {
 		}
 		setIfPresent(block, map, "particle", "particleTexture", TextureType.BLOCK);
 		setIfPresent(block, map, "item", "itemTexture", TextureType.ITEM);
+
+		if (block.texture == null || block.texture.isEmpty()) {
+			TextureHolder fallback = null;
+			for (String key : List.of("bottom", "top", "side", "front", "back", "left", "right", "all", "default")) {
+				if (map.containsKey(key)) {
+					fallback = toTextureHolder(map.get(key), TextureType.BLOCK);
+					break;
+				}
+			}
+			if (fallback == null) fallback = toTextureHolder(elementName + "_texture", TextureType.BLOCK);
+			setField(block, "texture", fallback);
+		}
 	}
 
 	private void setIfPresent(Block block, Map<String, Object> map, String key, String fieldName, TextureType type) {
