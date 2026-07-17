@@ -296,19 +296,15 @@ public class McpServer {
      * Execute a tool call
      */
     private McpTypes.ToolResult executeToolCall(String toolName, Map<String, Object> arguments) {
-        // This will be implemented by delegating to the IPC endpoint
-        // For now, return a placeholder
-        String resultText = "Tool '" + toolName + "' executed successfully";
-        
+        String resultText = "Unknown tool: '" + toolName + "'. Use tools/list to see available tools.";
+        boolean isError = true;
         if (currentWorkspace == null) {
             resultText = "No workspace loaded. Please open a MCreator workspace first.";
         }
-        
         List<McpTypes.ToolContent> content = List.of(
             new McpTypes.ToolContent("text", resultText)
         );
-        
-        return new McpTypes.ToolResult(content, false);
+        return new McpTypes.ToolResult(content, isError);
     }
 
     /**

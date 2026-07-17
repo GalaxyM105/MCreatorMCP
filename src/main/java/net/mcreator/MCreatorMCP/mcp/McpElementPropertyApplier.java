@@ -7,12 +7,7 @@ import net.mcreator.element.parts.procedure.NumberProcedure;
 import net.mcreator.element.parts.procedure.Procedure;
 import net.mcreator.element.parts.procedure.RetvalProcedure;
 import net.mcreator.element.parts.procedure.StringListProcedure;
-import net.mcreator.element.types.Achievement;
-import net.mcreator.element.types.Armor;
-import net.mcreator.element.types.Block;
-import net.mcreator.element.types.Fluid;
-import net.mcreator.element.types.Recipe;
-import net.mcreator.element.types.Tool;
+import net.mcreator.element.types.*;
 import net.mcreator.element.util.GEValidator;
 import net.mcreator.generator.mapping.MappableElement;
 import net.mcreator.minecraft.DataListEntry;
@@ -103,6 +98,34 @@ public class McpElementPropertyApplier {
 		recipeAliases.put("experience", "xpReward");
 		recipeAliases.put("cooktime", "cookingTime");
 		ALIASES.put("recipe", recipeAliases);
+
+		Map<String, String> commandAliases = new HashMap<>();
+		commandAliases.put("name", "commandName");
+		commandAliases.put("command", "commandName");
+		ALIASES.put("command", commandAliases);
+
+		Map<String, String> potionEffectAliases = new HashMap<>();
+		potionEffectAliases.put("name", "effectName");
+		potionEffectAliases.put("displayname", "effectName");
+		potionEffectAliases.put("sound", "onAddedSound");
+		ALIASES.put("potioneffect", potionEffectAliases);
+
+		Map<String, String> achievementAliases = new HashMap<>();
+		achievementAliases.put("name", "achievementName");
+		achievementAliases.put("displayname", "achievementName");
+		achievementAliases.put("description", "achievementDescription");
+		achievementAliases.put("icon", "achievementIcon");
+		achievementAliases.put("xp", "rewardXP");
+		achievementAliases.put("loot", "rewardLoot");
+		achievementAliases.put("recipes", "rewardRecipes");
+		achievementAliases.put("trigger", "triggerxml");
+		ALIASES.put("achievement", achievementAliases);
+
+		Map<String, String> villagerProfessionAliases = new HashMap<>();
+		villagerProfessionAliases.put("name", "displayName");
+		villagerProfessionAliases.put("poi", "pointOfInterest");
+		villagerProfessionAliases.put("sound", "actionSound");
+		ALIASES.put("villagerprofession", villagerProfessionAliases);
 
 		BLOCK_RENDER_TYPES.put("solid", 10);
 		BLOCK_RENDER_TYPES.put("cutout", 11);
@@ -289,6 +312,8 @@ public class McpElementPropertyApplier {
 		} catch (Exception e) {
 			LOG.warn("GE validation failed after applying properties: {}", e.getMessage());
 		}
+
+		applyPostValidationDefaults(ge, properties);
 	}
 
 	private void preProcessSpecials(GeneratableElement ge, Map<String, Object> properties) {
@@ -300,12 +325,19 @@ public class McpElementPropertyApplier {
 		}
 
 		if (ge instanceof Recipe recipe) {
-			Object recipeType = properties.get("recipeType");
+			Object recipeType = properties.remove("recipeType");
 			if (recipeType != null) {
 				normalizeAndSetRecipeType(recipe, recipeType);
 			}
-			Object inputs = properties.get("inputs");
-			Object output = properties.get("output");
+			Object inputs = properties.remove("inputs");
+			Object output = properties.remove("output");
+			Object outputCount = properties.remove("outputCount");
+			if (output instanceof String && outputCount != null) {
+				Map<String, Object> wrapped = new HashMap<>();
+				wrapped.put("item", output);
+				wrapped.put("count", outputCount);
+				output = wrapped;
+			}
 			if (inputs != null || output != null) {
 				applyRecipeInputsAndOutputs(recipe, inputs, output);
 			}
@@ -327,6 +359,233 @@ public class McpElementPropertyApplier {
 		if (ge instanceof Achievement achievement) {
 			if (achievement.triggerxml == null || achievement.triggerxml.isEmpty()) {
 				achievement.triggerxml = "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"advancement_trigger\" deletable=\"false\" x=\"40\" y=\"80\"><next><shadow type=\"custom_trigger\"></shadow></next></block></xml>";
+			}
+		}
+
+		if (ge instanceof Projectile projectile) {
+			if (projectile.entityModel == null || projectile.entityModel.isEmpty())
+				projectile.entityModel = "Default";
+		}
+
+		if (ge instanceof Plant plant) {
+			if (plant.customModelName == null || plant.customModelName.isEmpty())
+				plant.customModelName = "Cross model";
+		}
+
+		if (ge instanceof Feature feature) {
+			if (feature.generationStep == null || "RAW_GENERATION".equals(feature.generationStep.getUnmappedValue()))
+				feature.generationStep = new GenerationStep(workspace, "UNDERGROUND_ORES");
+			if (feature.generateCondition == null)
+				feature.generateCondition = new Procedure(null);
+			if (feature.featurexml == null || feature.featurexml.isEmpty()) {
+				feature.featurexml = "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"feature_container\" deletable=\"false\" x=\"40\" y=\"40\"><value name=\"feature\"><block type=\"feature_simple_block\"><value name=\"block\"><block type=\"blockstate_selector\"><mutation inputs=\"0\"/><field name=\"block\">minecraft:stone</field></block></value><field name=\"schedule_tick\">FALSE</field></block></value></block></xml>";
+			}
+		}
+
+		if (ge instanceof Structure structure) {
+			if (structure.generationStep == null || "RAW_GENERATION".equals(structure.generationStep.getUnmappedValue()))
+				structure.generationStep = new GenerationStep(workspace, "SURFACE_STRUCTURES");
+			if (structure.restrictionBiomes == null)
+				structure.restrictionBiomes = new ArrayList<>();
+			if (structure.ignoredBlocks == null)
+				structure.ignoredBlocks = new ArrayList<>();
+			if (structure.terrainAdaptation == null)
+				structure.terrainAdaptation = "beard_box";
+			if (structure.surfaceDetectionType == null)
+				structure.surfaceDetectionType = "WORLD_SURFACE_WG";
+			if (structure.startHeightProviderType == null)
+				structure.startHeightProviderType = "uniform";
+			if (structure.projection == null)
+				structure.projection = "rigid";
+			if (structure.structure == null)
+				structure.structure = "";
+		}
+
+		if (ge instanceof Command command) {
+			if (command.commandName == null || command.commandName.isEmpty())
+				command.commandName = elementName.toLowerCase(Locale.ROOT);
+			else
+				command.commandName = command.commandName.toLowerCase(Locale.ROOT);
+			if (command.type == null || command.type.isEmpty())
+				command.type = "STANDARD";
+			if (command.permissionLevel == null || command.permissionLevel.isEmpty())
+				command.permissionLevel = "4";
+			if (command.argsxml == null || command.argsxml.isEmpty())
+				command.argsxml = "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"args_start\" deletable=\"false\" x=\"40\" y=\"40\"><next><block type=\"call_procedure\"><field name=\"procedure\"></field></block></next></block></xml>";
+		}
+
+		if (ge instanceof Painting painting) {
+			if (painting.title == null || painting.title.isEmpty())
+				painting.title = elementName;
+			if (painting.author == null || painting.author.isEmpty())
+				painting.author = workspace.getWorkspaceSettings().getAuthor();
+			if (painting.width == 0)
+				painting.width = 16;
+			if (painting.height == 0)
+				painting.height = 16;
+		}
+
+		if (ge instanceof BannerPattern banner) {
+			if (banner.name == null || banner.name.isEmpty())
+				banner.name = elementName.toLowerCase(Locale.ROOT);
+		}
+
+		if (ge instanceof DamageType damage) {
+			if (damage.scaling == null || damage.scaling.isEmpty())
+				damage.scaling = "never";
+			if (damage.effects == null)
+				damage.effects = "";
+		}
+
+		if (ge instanceof GameRule gameRule) {
+			if (gameRule.type == null || gameRule.type.isEmpty())
+				gameRule.type = "Boolean";
+			if (gameRule.category == null)
+				gameRule.category = "MISC";
+			if (gameRule.displayName == null)
+				gameRule.displayName = elementName;
+			if (gameRule.description == null)
+				gameRule.description = "";
+		}
+
+		if (ge instanceof Attribute attribute) {
+			if (attribute.sentiment == null || attribute.sentiment.isEmpty())
+				attribute.sentiment = "positive";
+			if (attribute.entities == null)
+				attribute.entities = new ArrayList<>();
+		}
+
+		if (ge instanceof KeyBinding key) {
+			if (key.keyBindingName == null)
+				key.keyBindingName = elementName;
+			if (key.keyBindingCategoryKey == null)
+				key.keyBindingCategoryKey = "key.categories.misc";
+			if (key.triggerKey == null)
+				key.triggerKey = new KeyButton(workspace, "UNKNOWN");
+		}
+
+		if (ge instanceof VillagerProfession prof) {
+			if (prof.pointOfInterest == null || prof.pointOfInterest.getUnmappedValue().isEmpty())
+				prof.pointOfInterest = new MItemBlock(workspace, "Blocks.CRAFTING_TABLE");
+			if (prof.actionSound == null || prof.actionSound.getUnmappedValue().isEmpty())
+				prof.actionSound = new Sound(workspace, "entity.villager.work_librarian");
+			if (prof.professionTextureFile == null)
+				prof.professionTextureFile = "";
+			if (prof.zombifiedProfessionTextureFile == null)
+				prof.zombifiedProfessionTextureFile = "";
+			if (prof.hat == null)
+				prof.hat = "None";
+		}
+
+		if (ge instanceof VillagerTrade trade) {
+			if (trade.villagerProfession == null || trade.villagerProfession.getUnmappedValue().isEmpty())
+				trade.villagerProfession = new ProfessionEntry(workspace, "ARMORER");
+			if (trade.trades == null)
+				trade.trades = new ArrayList<>();
+		}
+
+		if (ge instanceof PotionEffect effect) {
+			if (effect.effectName == null || effect.effectName.isEmpty())
+				effect.effectName = elementName;
+			if (effect.mobEffectCategory == null)
+				effect.mobEffectCategory = "NEUTRAL";
+			if (effect.color == null)
+				effect.color = new Color(0x6699ff);
+			if (effect.particle == null || effect.particle.getUnmappedValue() == null
+					|| effect.particle.getUnmappedValue().isEmpty())
+				effect.particle = new ParticleEntry(workspace, "EXPLOSION_NORMAL");
+			if (effect.onAddedSound == null || effect.onAddedSound.getUnmappedValue() == null
+					|| effect.onAddedSound.getUnmappedValue().isEmpty())
+				effect.onAddedSound = new Sound(workspace, "entity.villager.work_librarian");
+			if (effect.modifiers == null)
+				effect.modifiers = new ArrayList<>();
+		}
+
+		if (ge instanceof ArmorTrim trim) {
+			if (trim.item == null)
+				trim.item = new MItemBlock(workspace, "");
+			if (trim.name == null)
+				trim.name = elementName.toLowerCase(Locale.ROOT);
+			if (trim.armorTextureFile == null)
+				trim.armorTextureFile = "";
+		}
+
+		if (ge instanceof ItemExtension ext) {
+			if (ext.item == null)
+				ext.item = new MItemBlock(workspace, "");
+			if (ext.fuelPower == null)
+				ext.fuelPower = new NumberProcedure(null, 0);
+			if (ext.fuelSuccessCondition == null)
+				ext.fuelSuccessCondition = new Procedure(null);
+			if (ext.dispenseSuccessCondition == null)
+				ext.dispenseSuccessCondition = new Procedure(null);
+			if (ext.dispenseResultItemstack == null)
+				ext.dispenseResultItemstack = new Procedure(null);
+		}
+
+		if (ge instanceof Overlay overlay) {
+			if (overlay.components == null)
+				overlay.components = new ArrayList<>();
+			if (overlay.baseTexture == null)
+				overlay.baseTexture = "";
+			if (overlay.overlayTarget == null)
+				overlay.overlayTarget = new ScreenEntry(workspace, "Ingame");
+			if (overlay.displayCondition == null)
+				overlay.displayCondition = new Procedure(null);
+			if (overlay.gridSettings == null)
+				overlay.gridSettings = new GridSettings();
+		}
+
+		if (ge instanceof GUI gui) {
+			if (gui.components == null)
+				gui.components = new ArrayList<>();
+			if (gui.gridSettings == null)
+				gui.gridSettings = new GridSettings();
+			if (gui.onOpen == null)
+				gui.onOpen = new Procedure(null);
+			if (gui.onTick == null)
+				gui.onTick = new Procedure(null);
+			if (gui.onClosed == null)
+				gui.onClosed = new Procedure(null);
+		}
+
+		if (ge instanceof SpecialEntity special) {
+			if (special.name == null)
+				special.name = elementName;
+			if (special.rarity == null)
+				special.rarity = "COMMON";
+			if (special.creativeTabs == null)
+				special.creativeTabs = new ArrayList<>();
+			if (special.itemTexture == null)
+				special.itemTexture = special.entityTexture;
+		}
+	}
+
+	/**
+	 * GEValidator sometimes resets mappable fields to the first datalist entry when no
+	 * user value is supplied. Re-apply safe defaults for those fields unless the user
+	 * explicitly provided them in the request.
+	 */
+	private void applyPostValidationDefaults(GeneratableElement ge, Map<String, Object> properties) {
+		if (ge instanceof PotionEffect effect) {
+			if (effect.particle == null || effect.particle.getUnmappedValue() == null
+					|| effect.particle.getUnmappedValue().isEmpty())
+				effect.particle = new ParticleEntry(workspace, "EXPLOSION_NORMAL");
+			if (effect.onAddedSound == null || effect.onAddedSound.getUnmappedValue() == null
+					|| effect.onAddedSound.getUnmappedValue().isEmpty())
+				effect.onAddedSound = new Sound(workspace, "entity.villager.work_librarian");
+		}
+		if (ge instanceof Feature feature) {
+			if (!properties.containsKey("generationStep")) {
+				feature.generationStep = new GenerationStep(workspace, "UNDERGROUND_ORES");
+			}
+			if (!properties.containsKey("featurexml") && (feature.featurexml == null || feature.featurexml.isEmpty())) {
+				feature.featurexml = "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"feature_container\" deletable=\"false\" x=\"40\" y=\"40\"><value name=\"feature\"><block type=\"feature_simple_block\"><value name=\"block\"><block type=\"blockstate_selector\"><mutation inputs=\"0\"/><field name=\"block\">minecraft:stone</field></block></value><field name=\"schedule_tick\">FALSE</field></block></value></block></xml>";
+			}
+		}
+		if (ge instanceof Structure structure) {
+			if (!properties.containsKey("generationStep")) {
+				structure.generationStep = new GenerationStep(workspace, "SURFACE_STRUCTURES");
 			}
 		}
 	}
@@ -462,6 +721,11 @@ public class McpElementPropertyApplier {
 			Object inputs = "inputs".equalsIgnoreCase(key) ? value : null;
 			Object output = "output".equalsIgnoreCase(key) ? value : null;
 			applyRecipeInputsAndOutputs(recipe, inputs, output);
+			return true;
+		}
+
+		if ("pools".equalsIgnoreCase(key) && ge instanceof LootTable lootTable && value instanceof List<?>) {
+			lootTable.pools = parseLootPools((List<?>) value);
 			return true;
 		}
 
@@ -651,7 +915,12 @@ public class McpElementPropertyApplier {
 		// Custom tab references are CUSTOM:<Name> and must keep mixed case.
 		if (s.startsWith("CUSTOM:") || s.startsWith("custom:"))
 			return s;
-		return s.toUpperCase(Locale.ROOT);
+		s = s.toUpperCase(Locale.ROOT);
+		if (s.startsWith("TAB_"))
+			s = s.substring(4);
+		if (s.startsWith("ITEMGROUP."))
+			s = s.substring(10);
+		return s;
 	}
 
 	private void setRepairItems(GeneratableElement ge, Object value) {
@@ -766,6 +1035,60 @@ public class McpElementPropertyApplier {
 				recipe.brewingReturnStack = outItem;
 			}
 		}
+	}
+
+	private List<LootTable.Pool> parseLootPools(List<?> source) {
+		List<LootTable.Pool> pools = new ArrayList<>();
+		for (Object o : source) {
+			if (!(o instanceof Map<?, ?> map))
+				continue;
+			LootTable.Pool pool = new LootTable.Pool();
+			Object rolls = map.get("rolls");
+			if (rolls instanceof Number n) {
+				pool.minrolls = n.intValue();
+				pool.maxrolls = n.intValue();
+			} else if (rolls instanceof Map<?, ?> rm) {
+				pool.minrolls = toInt(rm.get("min"), 1);
+				pool.maxrolls = toInt(rm.get("max"), 1);
+			}
+			Object bonus = map.get("bonusRolls");
+			if (bonus instanceof Number n) {
+				pool.minbonusrolls = n.intValue();
+				pool.maxbonusrolls = n.intValue();
+				pool.hasbonusrolls = true;
+			} else if (bonus instanceof Map<?, ?> bm) {
+				pool.minbonusrolls = toInt(bm.get("min"), 0);
+				pool.maxbonusrolls = toInt(bm.get("max"), 0);
+				pool.hasbonusrolls = true;
+			}
+			pool.entries = parseLootEntries(map.get("entries"));
+			pools.add(pool);
+		}
+		return pools;
+	}
+
+	private List<LootTable.Pool.Entry> parseLootEntries(Object entriesObj) {
+		List<LootTable.Pool.Entry> entries = new ArrayList<>();
+		if (!(entriesObj instanceof List<?> list))
+			return entries;
+		for (Object o : list) {
+			if (!(o instanceof Map<?, ?> map))
+				continue;
+			LootTable.Pool.Entry entry = new LootTable.Pool.Entry();
+			if (map.containsKey("type"))
+				entry.type = toString(map.get("type"));
+			Object item = map.containsKey("item") ? map.get("item") : map.get("name");
+			if (item != null)
+				entry.item = toMItemBlock(item);
+			if (map.containsKey("weight"))
+				entry.weight = toInt(map.get("weight"), 1);
+			if (map.containsKey("minCount"))
+				entry.minCount = toInt(map.get("minCount"), 1);
+			if (map.containsKey("maxCount"))
+				entry.maxCount = toInt(map.get("maxCount"), 1);
+			entries.add(entry);
+		}
+		return entries;
 	}
 
 	private String resolveAlias(String elementType, String key) {
@@ -906,12 +1229,14 @@ public class McpElementPropertyApplier {
 
 			Constructor<?> ctor = type.getDeclaredConstructor(Workspace.class, String.class);
 			ctor.setAccessible(true);
-			if (type.getSimpleName().equals("StepSound")) {
+			String simple = type.getSimpleName();
+			if ("StepSound".equals(simple) || "GenerationStep".equals(simple) || "ProfessionEntry".equals(simple)
+					|| "AttributeEntry".equals(simple) || "EquipmentSlotEntry".equals(simple)
+					|| "ParticleEntry".equals(simple) || "EffectEntry".equals(simple) || "KeyButton".equals(simple)) {
 				s = s.toUpperCase(Locale.ROOT);
 			}
-			if (type.getSimpleName().equals("TabEntry") && !s.contains(":")) {
-				// Vanilla creative tab datalist keys are uppercase; custom tab references use CUSTOM:<Name>.
-				s = s.toUpperCase(Locale.ROOT);
+			if ("TabEntry".equals(simple) && !s.contains(":")) {
+				s = normalizeCreativeTab(s);
 			}
 			return (MappableElement) ctor.newInstance(workspace, s);
 		} catch (Exception e) {
@@ -1382,6 +1707,16 @@ public class McpElementPropertyApplier {
 		if (value instanceof Number n)
 			return n.intValue();
 		return Integer.parseInt(String.valueOf(value));
+	}
+
+	private int toInt(Object value, int defaultValue) {
+		if (value == null)
+			return defaultValue;
+		try {
+			return toInt(value);
+		} catch (Exception e) {
+			return defaultValue;
+		}
 	}
 
 	private double toDouble(Object value) {

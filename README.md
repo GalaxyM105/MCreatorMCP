@@ -97,7 +97,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **117 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, and model categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **131 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, lifecycle, fine-grained editing, texture/model processing, in-game verification, and CI automation categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
@@ -117,7 +117,7 @@ The MCP server now exposes **117 tools** across workspace, element, asset, build
 
 ### Generic & Typed Element Creation
 - `createElement(elementType, elementName, properties?)` - Create any mod element with a rich JSON property object
-- `createItem`, `createBlock`, `createTool`, `createArmor`, `createFood`, `createEnchantment`, `createPotion`, `createLivingEntity`, `createRecipe`, `createParticle`, `createFluid`, `createBiome`, `createDimension`, `createAchievement`, `createLootTable`, `createFunction`, ... — one shortcut per registered `ModElementType`
+- `createItem`, `createBlock`, `createTool`, `createArmor`, `createFood`, `createEnchantment`, `createPotion`, `createLivingEntity`, `createRecipe`, `createParticle`, `createFluid`, `createBiome`, `createDimension`, `createAchievement`, `createLootTable`, `createFunction`, `createCommand`, `createFeature`, `createStructure`, `createPlant`, `createProjectile`, `createVillagerProfession`, `createVillagerTrade`, `createPotionEffect`, `createAttribute`, `createKeyBinding`, `createDamageType`, `createPainting`, `createBannerPattern`, ... — one shortcut per registered `ModElementType`
 - `createBedrockItem`, `createBedrockBlock`, `createBedrockEntity` — Bedrock Edition aliases (where the generator supports them)
 - `registerLootTable`, `registerAdvancement`, `registerFunction` — data-pack style helpers
 
@@ -176,6 +176,26 @@ The MCP server now exposes **117 tools** across workspace, element, asset, build
 - `createCreativeTab(tabName, displayName, icon, showSearch?)` / `updateCreativeTabs(tabName, elementNames)` / `listCreativeTabs()` - Manage custom creative inventory tabs
 - `createBackup(backupName?)` / `listBackups()` / `restoreBackup(backupName)` - Workspace local-history checkpoints
 - `listGenerators()` / `switchGenerator(generatorName)` - Switch the active generator plugin (e.g. `neoforge-1.21.1`, `datapack-1.21.1`, `addon-26.1x`)
+
+### Element Lifecycle & Fine-Grained Editing
+- `cloneElement(sourceElementName, newElementName, properties?)` - Duplicate an existing element with optional overrides
+- `renameElement(elementName, newName)` - Rename an element in the workspace
+- `moveElement(elementName, folderPath)` - Move an element to a workspace folder
+- `editRecipe(elementName, properties)` - Modify an existing recipe's type, inputs, and output
+- `editAdvancement(elementName, properties)` - Modify an existing advancement's display, criteria, and rewards
+- `editLootTable(elementName, properties)` - Modify an existing loot table's type and pools/entries
+
+### Texture/Model Pipeline & In-Game Verification
+- `processTexture(textureName, textureType, operations)` - Resize, pad, and recolor workspace textures
+- `generateMcmeta(textureName, textureType, frameTime?, interpolate?, frames?)` - Create `.mcmeta` animation metadata
+- `convertBlockbenchModel(sourcePath, modelName)` - Convert a Blockbench JSON model into a workspace model
+- `executeServerCommand(command, rconHost?, rconPort?, rconPassword?)` - Send an RCON command to a running server
+- `runTestScenario(scenarioName, commands, rconPassword?, rconPort?, timeoutSeconds?)` - Start a server, run commands, and return a log summary
+- `generateTestReport(logPath?)` - Parse a client/server log and return errors/warnings
+
+### CI / Automation
+- `runCIBuild(timeoutSeconds?)` - Regenerate code, build the JAR, start the server, and run a smoke-test command
+- `exportModrinth(outputPath, summary?)` - Package the built JAR into a Modrinth `.mrpack`
 
 ### Model Validation & Conversion
 - `validateModel(sourcePath)` - Validate a `.json` or `.obj` model file

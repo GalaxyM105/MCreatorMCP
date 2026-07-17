@@ -6,10 +6,10 @@ import net.mcreator.MCreatorMCP.mcp.McpTypes;
 import net.mcreator.element.GeneratableElement;
 import net.mcreator.element.ModElementType;
 import net.mcreator.element.ModElementTypeLoader;
-import net.mcreator.element.parts.TextureHolder;
-import net.mcreator.element.types.Achievement;
-import net.mcreator.element.types.Block;
-import net.mcreator.element.types.Fluid;
+import net.mcreator.element.parts.*;
+import net.mcreator.element.parts.procedure.NumberProcedure;
+import net.mcreator.element.parts.procedure.Procedure;
+import net.mcreator.element.types.*;
 import net.mcreator.element.types.interfaces.LimitedOptions;
 import net.mcreator.element.types.interfaces.Numeric;
 import net.mcreator.element.util.GEValidator;
@@ -33,7 +33,11 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.*;
 import java.util.LinkedHashMap;
@@ -251,6 +255,9 @@ public class MCPToolsService {
         // in-game verification, model validation/conversion)
         new McpExtraToolsService(this, mcpServer, mcreator).registerTools();
 
+        // Lifecycle, asset pipeline, and CI/automation tools
+        new McpLifecycleToolsService(this, mcpServer, mcreator).registerTools();
+
         LOG.info("Registered {} MCreator tools", mcpServer.getToolCount());
     }
 
@@ -331,7 +338,7 @@ public class MCPToolsService {
         }
     }
 
-    private McpTypes.ToolResult regenerateWorkspaceCode(Workspace workspace) {
+    McpTypes.ToolResult regenerateWorkspaceCode(Workspace workspace) {
         try {
             Generator generator = workspace.getGenerator();
             if (generator == null)
@@ -351,6 +358,7 @@ public class MCPToolsService {
             }
 
             generator.runResourceSetupTasks();
+            patchInitImports(workspace);
             workspace.markDirty();
 
             return createSuccessResult("Code regenerated for " + generated + " elements");
@@ -360,6 +368,51 @@ public class MCPToolsService {
         } catch (Exception e) {
             LOG.error("Error regenerating workspace code", e);
             return createErrorResult("Failed to regenerate code: " + e.getMessage());
+        }
+    }
+
+    /**
+     * The Neoforge 1.21.1 generator's element init templates omit imports for newly generated
+     * classes. Add wildcard imports for the subpackages that hold those classes.
+     */
+    private void patchInitImports(Workspace workspace) throws IOException {
+        File srcDir = new File(workspace.getFolderManager().getWorkspaceFolder(), "src/main/java");
+        if (!srcDir.exists()) return;
+
+        Map<String, String> suffixToSubpackage = new LinkedHashMap<>();
+        suffixToSubpackage.put("Blocks.java", ".block");
+        suffixToSubpackage.put("Items.java", ".item");
+        suffixToSubpackage.put("MobEffects.java", ".potion");
+        suffixToSubpackage.put("Entities.java", ".entity");
+        suffixToSubpackage.put("Particles.java", ".client.particle");
+        suffixToSubpackage.put("Features.java", ".world.features");
+        suffixToSubpackage.put("Potions.java", ".potion");
+
+        try (java.util.stream.Stream<Path> paths = Files.walk(srcDir.toPath())) {
+            List<Path> initFiles = paths
+                    .filter(p -> p.getFileName() != null)
+                    .filter(p -> suffixToSubpackage.keySet().stream().anyMatch(s -> p.toString().endsWith(s)))
+                    .collect(Collectors.toList());
+            for (Path p : initFiles) {
+                String content = Files.readString(p);
+                int pkgStart = content.indexOf("package ");
+                int pkgEnd = content.indexOf(";", pkgStart);
+                if (pkgStart < 0 || pkgEnd < 0) continue;
+                String pkg = content.substring(pkgStart + 8, pkgEnd).trim();
+
+                for (Map.Entry<String, String> e : suffixToSubpackage.entrySet()) {
+                    if (p.toString().endsWith(e.getKey())) {
+                        String targetPkg = pkg.replace(".init", e.getValue());
+                        String importLine = "import " + targetPkg + ".*;";
+                        if (!content.contains(importLine)) {
+                            content = content.replaceFirst("package [^;]+;", "$0\n\n" + importLine);
+                            Files.writeString(p, content);
+                            LOG.info("Patched init import in {} for {}", p.getFileName(), targetPkg);
+                        }
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -521,7 +574,8 @@ public class MCPToolsService {
                     }
                 } else if (field.getType() == TextureHolder.class) {
                     TextureHolder current = (TextureHolder) field.get(generatableElement);
-                    if (current == null && !"itemTexture".equals(field.getName())) {
+                    boolean needsItemTexture = generatableElement instanceof Plant || generatableElement instanceof SpecialEntity;
+                    if (current == null && (!"itemTexture".equals(field.getName()) || needsItemTexture)) {
                         TextureType textureType = TextureType.ITEM;
                         TextureReference ref = field.getAnnotation(TextureReference.class);
                         if (ref != null) {
@@ -542,6 +596,31 @@ public class MCPToolsService {
                     }
                 } else if (isPrimitiveNumber(field.getType())) {
                     setNumericDefault(field, generatableElement);
+                } else if (List.class.isAssignableFrom(field.getType())) {
+                    if (field.get(generatableElement) == null) {
+                        field.set(generatableElement, new ArrayList<>());
+                    }
+                } else if (Map.class.isAssignableFrom(field.getType())) {
+                    if (field.get(generatableElement) == null) {
+                        field.set(generatableElement, new HashMap<>());
+                    }
+                } else if (field.getType().isArray()) {
+                    Object arr = field.get(generatableElement);
+                    if (arr == null) {
+                        field.set(generatableElement, Array.newInstance(field.getType().getComponentType(), 0));
+                    } else {
+                        int len = Array.getLength(arr);
+                        boolean hasNull = false;
+                        for (int i = 0; i < len; i++) {
+                            if (Array.get(arr, i) == null) {
+                                hasNull = true;
+                                break;
+                            }
+                        }
+                        if (hasNull) {
+                            field.set(generatableElement, Array.newInstance(field.getType().getComponentType(), 0));
+                        }
+                    }
                 }
             } catch (Exception e) {
                 LOG.warn("Failed to set default value for field {}: {}", field.getName(), e.getMessage());
@@ -563,11 +642,226 @@ public class MCPToolsService {
             ((Block) generatableElement).renderType = 10;
         }
 
+        applyExtendedElementDefaults(generatableElement, workspace, elementName);
+
         // Run MCreator's own validator to fill in numeric/option defaults and ensure valid values
         try {
             GEValidator.validateAndTryToCorrect(generatableElement, null);
         } catch (Exception e) {
             LOG.warn("GE validation failed for element {}: {}", elementName, e.getMessage());
+        }
+    }
+
+    /**
+     * Applies safe defaults for newly-supported element types that the generic field loop does not cover.
+     */
+    private void applyExtendedElementDefaults(GeneratableElement generatableElement, Workspace workspace,
+            String elementName) {
+        try {
+            if (generatableElement instanceof Projectile projectile) {
+                if (projectile.entityModel == null || projectile.entityModel.isEmpty())
+                    projectile.entityModel = "Default";
+                if (projectile.customModelTexture == null)
+                    projectile.customModelTexture = "";
+            }
+
+            if (generatableElement instanceof LivingEntity living) {
+                if (living.mobModelName == null || living.mobModelName.isEmpty())
+                    living.mobModelName = "Default";
+            }
+
+            if (generatableElement instanceof Plant plant) {
+                if (plant.customModelName == null || plant.customModelName.isEmpty())
+                    plant.customModelName = "Cross model";
+            }
+
+            if (generatableElement instanceof Feature feature) {
+                if (feature.generationStep == null)
+                    feature.generationStep = new GenerationStep(workspace, "UNDERGROUND_ORES");
+                if (feature.generateCondition == null)
+                    feature.generateCondition = new Procedure(null);
+                if (feature.featurexml == null || feature.featurexml.isEmpty()) {
+                    feature.featurexml = "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"feature_container\" deletable=\"false\" x=\"40\" y=\"40\"><value name=\"feature\"><block type=\"feature_simple_block\"><value name=\"block\"><block type=\"blockstate_selector\"><mutation inputs=\"0\"/><field name=\"block\">minecraft:stone</field></block></value><field name=\"schedule_tick\">FALSE</field></block></value></block></xml>";
+                }
+            }
+
+            if (generatableElement instanceof Structure structure) {
+                if (structure.generationStep == null)
+                    structure.generationStep = new GenerationStep(workspace, "SURFACE_STRUCTURES");
+                if (structure.restrictionBiomes == null)
+                    structure.restrictionBiomes = new ArrayList<>();
+                if (structure.ignoredBlocks == null)
+                    structure.ignoredBlocks = new ArrayList<>();
+                if (structure.terrainAdaptation == null)
+                    structure.terrainAdaptation = "beard_box";
+                if (structure.surfaceDetectionType == null)
+                    structure.surfaceDetectionType = "WORLD_SURFACE_WG";
+                if (structure.startHeightProviderType == null)
+                    structure.startHeightProviderType = "uniform";
+                if (structure.projection == null)
+                    structure.projection = "rigid";
+                if (structure.structure == null)
+                    structure.structure = "";
+            }
+
+            if (generatableElement instanceof Command command) {
+                if (command.commandName == null || command.commandName.isEmpty())
+                    command.commandName = elementName.toLowerCase(Locale.ROOT);
+                if (command.type == null || command.type.isEmpty())
+                    command.type = "STANDARD";
+                if (command.permissionLevel == null || command.permissionLevel.isEmpty())
+                    command.permissionLevel = "4";
+                if (command.argsxml == null || command.argsxml.isEmpty())
+                    command.argsxml = "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"args_start\" deletable=\"false\" x=\"40\" y=\"40\"><next><block type=\"call_procedure\"><field name=\"procedure\"></field></block></next></block></xml>";
+            }
+
+            if (generatableElement instanceof Painting painting) {
+                if (painting.title == null || painting.title.isEmpty())
+                    painting.title = elementName;
+                if (painting.author == null || painting.author.isEmpty())
+                    painting.author = workspace.getWorkspaceSettings().getAuthor();
+                if (painting.width == 0)
+                    painting.width = 16;
+                if (painting.height == 0)
+                    painting.height = 16;
+            }
+
+            if (generatableElement instanceof BannerPattern banner) {
+                if (banner.name == null || banner.name.isEmpty())
+                    banner.name = elementName.toLowerCase(Locale.ROOT);
+            }
+
+            if (generatableElement instanceof DamageType damage) {
+                if (damage.scaling == null || damage.scaling.isEmpty())
+                    damage.scaling = "never";
+                if (damage.effects == null)
+                    damage.effects = "";
+            }
+
+            if (generatableElement instanceof GameRule gameRule) {
+                if (gameRule.type == null || gameRule.type.isEmpty())
+                    gameRule.type = "Boolean";
+                if (gameRule.category == null)
+                    gameRule.category = "MISC";
+                if (gameRule.displayName == null)
+                    gameRule.displayName = elementName;
+                if (gameRule.description == null)
+                    gameRule.description = "";
+            }
+
+            if (generatableElement instanceof Attribute attribute) {
+                if (attribute.sentiment == null || attribute.sentiment.isEmpty())
+                    attribute.sentiment = "positive";
+                if (attribute.entities == null)
+                    attribute.entities = new ArrayList<>();
+            }
+
+            if (generatableElement instanceof KeyBinding key) {
+                if (key.keyBindingName == null)
+                    key.keyBindingName = elementName;
+                if (key.keyBindingCategoryKey == null)
+                    key.keyBindingCategoryKey = "key.categories.misc";
+                if (key.triggerKey == null)
+                    key.triggerKey = new KeyButton(workspace, "UNKNOWN");
+            }
+
+            if (generatableElement instanceof VillagerProfession prof) {
+                if (prof.pointOfInterest == null || prof.pointOfInterest.getUnmappedValue().isEmpty())
+                    prof.pointOfInterest = new MItemBlock(workspace, "Blocks.CRAFTING_TABLE");
+                if (prof.actionSound == null || prof.actionSound.getUnmappedValue().isEmpty())
+                    prof.actionSound = new Sound(workspace, "entity.villager.work_librarian");
+                if (prof.professionTextureFile == null)
+                    prof.professionTextureFile = "";
+                if (prof.zombifiedProfessionTextureFile == null)
+                    prof.zombifiedProfessionTextureFile = "";
+                if (prof.hat == null)
+                    prof.hat = "None";
+            }
+
+            if (generatableElement instanceof VillagerTrade trade) {
+                if (trade.villagerProfession == null || trade.villagerProfession.getUnmappedValue().isEmpty())
+                    trade.villagerProfession = new ProfessionEntry(workspace, "ARMORER");
+                if (trade.trades == null)
+                    trade.trades = new ArrayList<>();
+            }
+
+            if (generatableElement instanceof PotionEffect effect) {
+                if (effect.effectName == null || effect.effectName.isEmpty())
+                    effect.effectName = elementName;
+                if (effect.mobEffectCategory == null)
+                    effect.mobEffectCategory = "NEUTRAL";
+                if (effect.color == null)
+                    effect.color = new java.awt.Color(0x6699ff);
+                if (effect.particle == null || effect.particle.getUnmappedValue() == null
+                        || effect.particle.getUnmappedValue().isEmpty())
+                    effect.particle = new ParticleEntry(workspace, "EXPLOSION_NORMAL");
+                if (effect.onAddedSound == null || effect.onAddedSound.getUnmappedValue() == null
+                        || effect.onAddedSound.getUnmappedValue().isEmpty())
+                    effect.onAddedSound = new Sound(workspace, "entity.villager.work_librarian");
+                if (effect.modifiers == null)
+                    effect.modifiers = new ArrayList<>();
+            }
+
+            if (generatableElement instanceof ArmorTrim trim) {
+                if (trim.item == null)
+                    trim.item = new MItemBlock(workspace, "");
+                if (trim.name == null)
+                    trim.name = elementName.toLowerCase(Locale.ROOT);
+                if (trim.armorTextureFile == null)
+                    trim.armorTextureFile = "";
+            }
+
+            if (generatableElement instanceof ItemExtension ext) {
+                if (ext.item == null)
+                    ext.item = new MItemBlock(workspace, "");
+                if (ext.fuelPower == null)
+                    ext.fuelPower = new NumberProcedure(null, 0);
+                if (ext.fuelSuccessCondition == null)
+                    ext.fuelSuccessCondition = new Procedure(null);
+                if (ext.dispenseSuccessCondition == null)
+                    ext.dispenseSuccessCondition = new Procedure(null);
+                if (ext.dispenseResultItemstack == null)
+                    ext.dispenseResultItemstack = new Procedure(null);
+            }
+
+            if (generatableElement instanceof Overlay overlay) {
+                if (overlay.components == null)
+                    overlay.components = new ArrayList<>();
+                if (overlay.baseTexture == null)
+                    overlay.baseTexture = "";
+                if (overlay.overlayTarget == null)
+                    overlay.overlayTarget = new ScreenEntry(workspace, "Ingame");
+                if (overlay.displayCondition == null)
+                    overlay.displayCondition = new Procedure(null);
+                if (overlay.gridSettings == null)
+                    overlay.gridSettings = new GridSettings();
+            }
+
+            if (generatableElement instanceof GUI gui) {
+                if (gui.components == null)
+                    gui.components = new ArrayList<>();
+                if (gui.gridSettings == null)
+                    gui.gridSettings = new GridSettings();
+                if (gui.onOpen == null)
+                    gui.onOpen = new Procedure(null);
+                if (gui.onTick == null)
+                    gui.onTick = new Procedure(null);
+                if (gui.onClosed == null)
+                    gui.onClosed = new Procedure(null);
+            }
+
+            if (generatableElement instanceof SpecialEntity special) {
+                if (special.name == null)
+                    special.name = elementName;
+                if (special.rarity == null)
+                    special.rarity = "COMMON";
+                if (special.creativeTabs == null)
+                    special.creativeTabs = new ArrayList<>();
+                if (special.itemTexture == null)
+                    special.itemTexture = special.entityTexture;
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to apply extended defaults for {}: {}", elementName, e.getMessage());
         }
     }
 
@@ -1914,7 +2208,7 @@ public class MCPToolsService {
         return Map.of("type", "string", "description", description);
     }
 
-    private Map<String, Object> objectPropSchema(String description) {
+    Map<String, Object> objectPropSchema(String description) {
         return Map.of("type", "object", "description", description);
     }
 

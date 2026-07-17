@@ -10,7 +10,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - Health endpoint: `http://localhost:5175/health`
 
 ## Tool Count
-`tools/list` returned **98 tools** after the Phase 2 advanced-tools expansion (workspace/element/asset/variable/build/export/validation + per-type `create<TYPE>` shortcuts + procedure/event/workflow tools + Bedrock pack tools + versioning/test-report tools).
+`tools/list` returned **131 tools** after the Phase 4 lifecycle/asset/CI expansion (workspace/element/asset/variable/build/export/validation + per-type `create<TYPE>` shortcuts + procedure/event/workflow tools + Bedrock pack tools + versioning/test-report tools + lifecycle helpers + fine-grained editing + texture/model pipeline + in-game verification + CI automation).
 
 ## Core Workspace Tools
 
@@ -130,3 +130,52 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 2. Old pre-normalization test elements from `MCPTtest8` (and early `MCPTtest7` elements) may still be flagged if they are loaded in a workspace; fresh elements validate cleanly.
 3. `verifyServerLoads`/`verifyClientLoads` error counts may include stale `/ERROR` lines from previous runs when logs are not rotated. The status field is the reliable pass/fail signal.
 4. Bedrock pack tools write manifest and element JSON files into the workspace; full Bedrock build output depends on selecting the Bedrock add-on generator and running `buildBedrockProject`.
+
+## Phase 4 Tests — Lifecycle, Fine-Grained Editing, Asset Pipeline, In-Game Verification, CI Automation
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `createCommand` | `elementName=McpNewCommand`, `argsxml` with `args_start` | created and generated `Command` element; server loads |
+| `createFeature` | `elementName=McpFeatureFix`, `featurexml` with `feature_container` | created and generated `Feature` element; code compiles |
+| `createStructure` | `elementName=McpTower` | created `Structure` element with `SURFACE_STRUCTURES` generation step |
+| `createPlant` | `elementName=McpBerry` | created `Plant` element with default block/plant textures |
+| `createProjectile` | `elementName=McpFireball` | created `Projectile` element and generated entity class |
+| `createVillagerProfession` | `elementName=McpVillagerFix` | created with `Blocks.CRAFTING_TABLE` POI and default sound |
+| `createVillagerTrade` | `elementName=McpVillagertrade` | created `VillagerTrade` element |
+| `createPotionEffect` | `elementName=McpPotioneffect` | created with default particle/sound/color; no FreeMarker errors |
+| `createAttribute` | `elementName=McpAttribute` | created `Attribute` element |
+| `createKeyBinding` | `elementName=McpKeybind` | created `KeyBinding` element |
+| `createDamageType` | `elementName=McpDamagetype` | created `DamageType` element |
+| `createPainting` | `elementName=McpPainting` | created `Painting` element |
+| `createBannerPattern` | `elementName=McpBannerpattern` | created `BannerPattern` element |
+| `cloneElement` | `sourceElementName=TestBlock`, `newElementName=ClonedBlock` | cloned element JSON persisted |
+| `renameElement` | `elementName=ClonedBlock`, `newName=RenamedBlock` | renamed and workspace consistent |
+| `moveElement` | `elementName=RenamedBlock`, `folderPath=""` | moved to workspace root |
+| `editRecipe` | `McpRubyRecipe` with `output`, `outputCount`, inputs | recipe regenerated cleanly |
+| `editAdvancement` | `McpAdvance` displayName/description/rewardXP | updated and regenerated cleanly |
+| `editLootTable` | `McpSapphireLoot` with pools/entries/item | entries normalized to `CUSTOM:TestItem`; regenerated cleanly |
+| `processTexture` | `test_item` resize + recolor + pad | produced 32x32 recolored texture in assets folder |
+| `generateMcmeta` | `test_item` frameTime=2, interpolate | wrote `.mcmeta` with `animation.interpolate=true` |
+| `convertBlockbenchModel` | `/tmp/test_blockbench.json` -> `test_converted` | wrote Minecraft JSON block model |
+| `executeServerCommand` | `say MCreatorMCP RCON works` | RCON command sent; server logged message |
+| `runTestScenario` | `phase4-logs` with `say` command | server started, command executed, stopped, errors counted |
+| `runCIBuild` | timeout 300s | regenerated code, built JAR, started server, command executed |
+| `exportModrinth` | output `/tmp/mcptest7.mrpack` | produced `.mrpack` containing built JAR |
+| `buildForJavaEdition` | no args | returned path to `modid-1.0.jar` |
+| `generateTestReport` | default `run/logs/latest.log` | parsed latest server log, summarized errors/warnings |
+
+### Phase 4 Fixes Verified
+- `McpElementPropertyApplier` now aliases `potioneffect`/`achievement`/`villagerprofession` keys and re-applies safe defaults after `GEValidator` resets.
+- `Feature` `featurexml` defaults to a valid `feature_container` block and `generationStep` is restored to `UNDERGROUND_ORES` after validation.
+- `Command` `argsxml` defaults to a valid `args_start` block.
+- `PotionEffect` `onAddedSound` and `particle` defaults use empty-value checks so `setDefaultMappableElement` placeholders are overridden.
+- `VillagerProfession` defaults `pointOfInterest` to `Blocks.CRAFTING_TABLE` and `actionSound` to `entity.villager.work_librarian`.
+- `LootTable` pool editing normalizes `name`/`item` and `rolls` into `LootTable.Pool`/`Entry` objects.
+- `RConClient` was rewritten to use raw `ByteBuffer`/`InputStream`/`OutputStream` because `DataInputStream`/`DataOutputStream` caused `EOFException` with the Minecraft RCON server.
+- `runTestScenario` now clears stale `latest.log`/`debug.log` files and waits for both `Done (` and `RCON running on` before connecting.
+- `patchInitImports` adds wildcard imports for `block`, `item`, `potion`, `entity`, `client.particle`, `world.features`, and `potion` subpackages so generated init classes compile.
+
+### Known Issues / Notes (Post-Phase 4)
+1. The test workspace contains multiple villager professions that all point to `minecraft:crafting_table`, so the server logs `Skipping villager profession ... POI block already in use` and related tag/advancement errors. These are test-data conflicts, not code defects.
+2. `runClient` still reports a single OpenAL `SoundSystem` error in the headless VM; this is environmental and expected.
+3. `executeServerCommand` requires an already-running server (use `runServer` or `runTestScenario` first).
