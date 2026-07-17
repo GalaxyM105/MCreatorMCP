@@ -97,7 +97,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **151 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, lifecycle, fine-grained editing, texture/model processing, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, and build-error diagnostics. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **164 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, procedure templates, lifecycle, folders, fine-grained editing, texture/model processing, prompt-driven texture generation, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, and build-error diagnostics. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
@@ -165,6 +165,8 @@ The MCP server now exposes **151 tools** across workspace, element, asset, build
 ### Procedures, Events & Workflows
 - `createProcedure(elementName, xml?)` - Create a reusable Blockly procedure
 - `createProcedureAndAttach(procedureName, elementName, eventType, xml?)` - Create a procedure and immediately attach it to an element event in one call
+- `listProcedureTemplates()` - List available procedure templates (`empty`, `give_item`, `send_message`, `execute_command`, `set_block`, `spawn_entity`, `apply_potion`)
+- `applyProcedureTemplate(templateName, elementName, eventType, procedureName?, values?)` - Create a procedure from a named template and attach it to an element event
 - `getEventProcedures(elementName)` - List all event/procedure hooks on a mod element
 - `updateEventProcedure(elementName, eventType, procedureName?, xml?)` - Attach or update an event procedure
 - `registerEventListener(elementName, eventType, actionDefinition)` - Alias for `updateEventProcedure` using an action definition object
@@ -183,11 +185,17 @@ The MCP server now exposes **151 tools** across workspace, element, asset, build
 - `createBedrockBehaviorJson(packName, elementType, elementName, properties?)` - Write a Bedrock behavior pack JSON definition for an item/block/entity
 - `createBedrockItem`, `createBedrockBlock`, `createBedrockEntity` - Bedrock element aliases (where supported by the generator)
 - `buildBedrockProject(packName?)` - Package resource and behavior packs into `.mcpack` files
+- `exportBedrockAddon(packName?, outputPath?)` - Package Bedrock resource and behavior pack folders into a combined `.mcaddon` file
 
 ### Datapack-Only Worldgen
 - `createDatapackFeature(featureName, featureType?, target?, state?, count?)` - Write a vanilla datapack `configured_feature` + `placed_feature` JSON pair directly into the workspace data folder
 - `createDatapackStructure(structureName, nbtName?, biomeTag?, spacing?, separation?, salt?)` - Write a vanilla datapack `structure` + `template_pool` + `structure_set` JSON set directly into the workspace data folder
 - `createDatapackOre(oreName, blockState?, replaceableTag?, veinSize?, count?, heightRange?, discardChance?)` - Write a vanilla datapack `configured_feature` + `placed_feature` ore pair directly into the workspace data folder
+- `createDatapackBiome(biomeName, hasPrecipitation?, temperature?, downfall?, skyColor?, fogColor?, waterColor?, waterFogColor?, carvers?, features?, spawners?)` - Write a vanilla datapack `biome` JSON directly into the workspace data folder
+- `createDatapackDimension(dimensionName, dimensionType?, generatorType?, noiseSettings?, biomeSource?, flatLayers?)` - Write a vanilla datapack `dimension` JSON directly into the workspace data folder
+- `createDatapackDimensionType(dimensionTypeName, ambientLight?, bedWorks?, coordinateScale?, effects?, hasCeiling?, hasRaids?, hasSkylight?, height?, logicalHeight?, minY?, ultrawarm?, natural?, piglinSafe?, respawnAnchorWorks?, infiniburn?, monsterSpawnLightLevel?)` - Write a vanilla datapack `dimension_type` JSON directly into the workspace data folder
+- `createDatapackCarver(carverName, carverType?, replaceableTag?, probability?, yMin?, yMax?, lavaLevel?)` - Write a vanilla datapack `configured_carver` JSON directly into the workspace data folder
+- `createMcfunction(functionName, commands)` - Write a datapack `.mcfunction` file directly into the workspace data folder
 
 ### Publishing
 - `publishToModrinth(apiToken, projectId, versionNumber, changelog?, loaders?, gameVersions?, releaseType?, filePath?)` - Publish the built JAR to Modrinth
@@ -207,6 +215,9 @@ The MCP server now exposes **151 tools** across workspace, element, asset, build
 - `cloneElement(sourceElementName, newElementName, properties?)` - Duplicate an existing element with optional overrides
 - `renameElement(elementName, newName)` - Rename an element in the workspace
 - `moveElement(elementName, folderPath)` - Move an element to a workspace folder
+- `listElementFolders()` - List the workspace folder tree
+- `createElementFolder(folderName, parentPath?)` - Create a folder for organizing elements
+- `moveElementsToFolder(elementNames, folderPath?)` - Move multiple elements to a folder in one call
 - `editRecipe(elementName, properties)` - Modify an existing recipe's type, inputs, and output
 - `editAdvancement(elementName, properties)` - Modify an existing advancement's display, criteria, and rewards
 - `editLootTable(elementName, properties)` - Modify an existing loot table's type and pools/entries
@@ -214,10 +225,12 @@ The MCP server now exposes **151 tools** across workspace, element, asset, build
 ### Texture/Model Pipeline & In-Game Verification
 - `processTexture(textureName, textureType, operations)` - Resize, pad, and recolor workspace textures
 - `generateMcmeta(textureName, textureType, frameTime?, interpolate?, frames?)` - Create `.mcmeta` animation metadata
+- `generateTextureFromPrompt(prompt, textureName, textureType, width?, height?)` - Generate a placeholder texture from a text prompt (draws a color-hash pattern and the prompt text)
 - `convertBlockbenchModel(sourcePath, modelName)` - Convert a Blockbench JSON model into a workspace model
 - `executeServerCommand(command, rconHost?, rconPort?, rconPassword?)` - Send an RCON command to a running server
 - `runTestScenario(scenarioName, commands, rconPassword?, rconPort?, timeoutSeconds?)` - Start a server, run commands, and return a log summary
 - `verifyClientInGame(timeoutSeconds?, outputPath?, commands?)` - Launch the Minecraft client in a virtual display and capture a screenshot of the main menu
+- `verifyInWorld(commands, includeClientScreenshot?, timeoutSeconds?, rconPassword?, outputPath?)` - Start a server, execute place/break/inspect commands via RCON, and optionally capture a client screenshot
 - `generateTestReport(logPath?)` - Parse a client/server log and return errors/warnings
 
 ### CI / Automation

@@ -46,6 +46,27 @@ public class McpAdvancedToolsService {
     private static final String PROCEDURE_XML_BASE =
             "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field></block></xml>";
 
+    private static final Map<String, ProcedureTemplate> PROCEDURE_TEMPLATES;
+    static {
+        Map<String, ProcedureTemplate> map = new LinkedHashMap<>();
+        map.put("empty", new ProcedureTemplate("empty", "Empty trigger-only procedure", Map.of()));
+        map.put("give_item", new ProcedureTemplate("give_item", "Give an item to the entity",
+                Map.of("item", "minecraft:diamond", "amount", "1")));
+        map.put("send_message", new ProcedureTemplate("send_message", "Send a chat message to the entity",
+                Map.of("message", "Hello!", "actbar", "false")));
+        map.put("execute_command", new ProcedureTemplate("execute_command", "Execute a command at the event position",
+                Map.of("command", "say Hello")));
+        map.put("set_block", new ProcedureTemplate("set_block", "Set a block at the event position",
+                Map.of("block", "minecraft:stone")));
+        map.put("spawn_entity", new ProcedureTemplate("spawn_entity", "Spawn an entity at the event position",
+                Map.of("entity", "minecraft:cow")));
+        map.put("apply_potion", new ProcedureTemplate("apply_potion", "Apply a potion effect to the entity",
+                Map.of("potion", "minecraft:regeneration", "level", "1", "duration", "60")));
+        PROCEDURE_TEMPLATES = Collections.unmodifiableMap(map);
+    }
+
+    private record ProcedureTemplate(String name, String description, Map<String, String> defaultValues) {}
+
     private final MCPToolsService host;
     private final McpServer mcpServer;
     private final MCreator mcreator;
@@ -97,6 +118,18 @@ public class McpAdvancedToolsService {
                         "xml", host.stringSchema("Blockly XML (optional)")
                 ), "procedureName", "elementName", "eventType"),
                 params -> createProcedureAndAttach(params));
+        mcpServer.registerTool("listProcedureTemplates", "List available procedure templates with parameter descriptions",
+                host.objectSchema(Map.of()),
+                params -> listProcedureTemplates(params));
+        mcpServer.registerTool("applyProcedureTemplate", "Create a procedure from a named template and attach it to an element event",
+                host.objectSchema(host.props(
+                        "templateName", host.stringSchema("Template name (e.g. empty, give_item, send_message, execute_command, set_block, spawn_entity, apply_potion)"),
+                        "elementName", host.stringSchema("Element name to attach to"),
+                        "eventType", host.stringSchema("Event field name, e.g. onRightClicked"),
+                        "procedureName", host.stringSchema("Optional custom procedure name"),
+                        "values", host.objectPropSchema("Template values (item, message, command, entity, potion, block, amount, x, y, z)")
+                ), "templateName", "elementName", "eventType"),
+                params -> applyProcedureTemplate(params));
 
         // Compound workflow tools
         mcpServer.registerTool("createModWithTemplate", "Create a complete mod from a template",
@@ -187,6 +220,12 @@ public class McpAdvancedToolsService {
                         "packName", host.stringSchema("Pack name prefix")
                 )),
                 params -> buildBedrockProject(params));
+        mcpServer.registerTool("exportBedrockAddon", "Package Bedrock resource and behavior packs into a combined .mcaddon file",
+                host.objectSchema(host.props(
+                        "packName", host.stringSchema("Pack name prefix (optional)"),
+                        "outputPath", host.stringSchema("Output .mcaddon file path (optional)")
+                )),
+                params -> exportBedrockAddon(params));
 
         // Test & reporting
         mcpServer.registerTool("generateTestReport", "Generate an in-game test report from client/server logs",
@@ -1334,5 +1373,190 @@ public class McpAdvancedToolsService {
         if (o == null) return defaultValue;
         if (o instanceof Boolean b) return b;
         return Boolean.parseBoolean(String.valueOf(o));
+    }
+
+    private McpTypes.ToolResult listProcedureTemplates(Map<String, Object> params) {
+        try {
+            List<Map<String, Object>> list = new ArrayList<>();
+            for (ProcedureTemplate template : PROCEDURE_TEMPLATES.values()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", template.name());
+                m.put("description", template.description());
+                m.put("defaultValues", template.defaultValues());
+                list.add(m);
+            }
+            return host.createSuccessResult(objectMapper.writeValueAsString(list));
+        } catch (Exception e) {
+            return host.createErrorResult("Failed to list procedure templates: " + e.getMessage());
+        }
+    }
+
+    private McpTypes.ToolResult applyProcedureTemplate(Map<String, Object> params) {
+        String templateName = (String) params.get("templateName");
+        String elementName = (String) params.get("elementName");
+        String eventType = (String) params.get("eventType");
+        if (templateName == null || elementName == null || eventType == null)
+            return host.createErrorResult("templateName, elementName, and eventType are required");
+
+        String procedureName = (String) params.get("procedureName");
+        if (procedureName == null || procedureName.isEmpty())
+            procedureName = sanitizeJavaName(elementName + "_" + eventType + "_" + templateName);
+
+        Map<String, Object> values = new HashMap<>();
+        Object v = params.get("values");
+        if (v instanceof Map<?, ?> vm) values.putAll((Map<String, Object>) vm);
+
+        String xml = buildProcedureXml(templateName, values);
+        return doUpdateEventProcedure(elementName, eventType, procedureName, xml);
+    }
+
+    private String buildProcedureXml(String templateName, Map<String, Object> values) {
+        ProcedureTemplate template = PROCEDURE_TEMPLATES.getOrDefault(templateName, PROCEDURE_TEMPLATES.get("empty"));
+        Map<String, String> defaults = new HashMap<>(template.defaultValues());
+        for (Map.Entry<String, Object> e : values.entrySet()) {
+            if (e.getValue() != null) defaults.put(e.getKey(), String.valueOf(e.getValue()));
+        }
+
+        String item = escapeXml(defaults.getOrDefault("item", "minecraft:diamond"));
+        String amount = escapeXml(defaults.getOrDefault("amount", "1"));
+        String message = escapeXml(defaults.getOrDefault("message", "Hello!"));
+        String actbar = defaults.getOrDefault("actbar", "false");
+        String command = escapeXml(defaults.getOrDefault("command", "say Hello"));
+        String block = escapeXml(defaults.getOrDefault("block", "minecraft:stone"));
+        String entity = escapeXml(defaults.getOrDefault("entity", "minecraft:cow"));
+        String potion = escapeXml(defaults.getOrDefault("potion", "minecraft:regeneration"));
+        String level = escapeXml(defaults.getOrDefault("level", "1"));
+        String duration = escapeXml(defaults.getOrDefault("duration", "60"));
+
+        String blockType;
+        StringBuilder body = new StringBuilder();
+        switch (templateName) {
+        case "give_item" -> {
+            blockType = "entity_add_item";
+            body.append(valueXml("item", "mcitem_all", "<field name=\"value\">" + item + "</field>"));
+            body.append(valueXml("amount", "math_number", "<field name=\"NUM\">" + amount + "</field>"));
+            body.append(valueXml("entity", "entity_from_deps", ""));
+        }
+        case "send_message" -> {
+            blockType = "entity_send_chat";
+            body.append(valueXml("text", "text", "<field name=\"TEXT\">" + message + "</field>"));
+            body.append(valueXml("actbar", "logic_boolean", "<field name=\"BOOL\">" + actbar.toUpperCase(Locale.ROOT) + "</field>"));
+            body.append(valueXml("entity", "entity_from_deps", ""));
+        }
+        case "execute_command" -> {
+            blockType = "execute_command";
+            body.append(valueXml("command", "text", "<field name=\"TEXT\">" + command + "</field>"));
+            body.append(valueXml("x", "coord_x", ""));
+            body.append(valueXml("y", "coord_y", ""));
+            body.append(valueXml("z", "coord_z", ""));
+        }
+        case "set_block" -> {
+            blockType = "block_add";
+            body.append(valueXml("block", "mcitem_allblocks", "<field name=\"value\">" + block + "</field>"));
+            body.append(valueXml("x", "coord_x", ""));
+            body.append(valueXml("y", "coord_y", ""));
+            body.append(valueXml("z", "coord_z", ""));
+        }
+        case "spawn_entity" -> {
+            blockType = "spawn_entity";
+            body.append("<field name=\"entity\">").append(entity).append("</field>");
+            body.append(valueXml("x", "coord_x", ""));
+            body.append(valueXml("y", "coord_y", ""));
+            body.append(valueXml("z", "coord_z", ""));
+        }
+        case "apply_potion" -> {
+            blockType = "entity_add_potion";
+            body.append(valueXml("level", "math_number", "<field name=\"NUM\">" + level + "</field>"));
+            body.append(valueXml("duration", "math_number", "<field name=\"NUM\">" + duration + "</field>"));
+            body.append(valueXml("entity", "entity_from_deps", ""));
+            body.append("<field name=\"potion\">").append(potion).append("</field>");
+        }
+        default -> {
+            return PROCEDURE_XML_BASE;
+        }
+        }
+        return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"" + blockType + "\">" + body + "</block></next></block></xml>";
+    }
+
+    private String valueXml(String name, String blockType, String inner) {
+        return "<value name=\"" + name + "\"><block type=\"" + blockType + "\">" + inner + "</block></value>";
+    }
+
+    private String escapeXml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    private McpTypes.ToolResult exportBedrockAddon(Map<String, Object> params) {
+        String packName = (String) params.get("packName");
+        String outputPath = (String) params.get("outputPath");
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return host.createErrorResult("No workspace loaded");
+            File root = workspace.getFolderManager().getWorkspaceFolder();
+            File bedrockDir = new File(root, "bedrock");
+            File rpDir = new File(bedrockDir, "resource_packs");
+            File bpDir = new File(bedrockDir, "behavior_packs");
+            if (!rpDir.isDirectory() && !bpDir.isDirectory())
+                return host.createErrorResult("No Bedrock packs found in " + bedrockDir);
+
+            File tempDir = Files.createTempDirectory("mcp_bedrock_addon").toFile();
+            List<String> added = new ArrayList<>();
+            if (rpDir.isDirectory()) {
+                for (File f : rpDir.listFiles(File::isDirectory)) {
+                    if (packName == null || packName.isEmpty() || f.getName().startsWith(packName)) {
+                        File dest = new File(tempDir, f.getName());
+                        copyDirectory(f.toPath(), dest.toPath());
+                        added.add("RP:" + f.getName());
+                    }
+                }
+            }
+            if (bpDir.isDirectory()) {
+                for (File f : bpDir.listFiles(File::isDirectory)) {
+                    if (packName == null || packName.isEmpty() || f.getName().startsWith(packName)) {
+                        File dest = new File(tempDir, f.getName() + "_behavior");
+                        copyDirectory(f.toPath(), dest.toPath());
+                        added.add("BP:" + f.getName());
+                    }
+                }
+            }
+            if (added.isEmpty()) return host.createErrorResult("No matching Bedrock packs for prefix " + packName);
+
+            File out = outputPath != null && !outputPath.isEmpty() ? new File(outputPath) :
+                    new File(root, ((packName != null && !packName.isEmpty()) ? packName : workspace.getWorkspaceSettings().getModID()) + ".mcaddon");
+            out.getParentFile().mkdirs();
+            zipDirectory(tempDir.toPath(), out.toPath());
+            deleteDirectory(tempDir);
+            return host.createSuccessResult("Exported Bedrock addon to " + out.getAbsolutePath() + " containing " + added);
+        } catch (Exception e) {
+            LOG.error("Error exporting Bedrock addon", e);
+            return host.createErrorResult("Failed to export Bedrock addon: " + e.getMessage());
+        }
+    }
+
+    private void copyDirectory(Path source, Path target) throws IOException {
+        Files.walk(source).forEach(path -> {
+            try {
+                Path dest = target.resolve(source.relativize(path));
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(dest);
+                } else {
+                    Files.copy(path, dest, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    private void deleteDirectory(File dir) {
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                if (f.isDirectory()) deleteDirectory(f);
+                else f.delete();
+            }
+        }
+        dir.delete();
     }
 }

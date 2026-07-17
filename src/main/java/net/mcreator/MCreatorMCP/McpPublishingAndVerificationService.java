@@ -135,6 +135,75 @@ public class McpPublishingAndVerificationService {
 						"commands", host.objectSchema(host.props(), new String[]{}) // singleplayer commands not reliable headless
 				)),
 				params -> verifyClientInGame(params));
+
+		// Datapack-only worldgen writers
+		mcpServer.registerTool("createDatapackBiome", "Write a datapack biome JSON file directly into the workspace data folder",
+				host.objectSchema(host.props(
+						"biomeName", host.stringSchema("Biome name"),
+						"hasPrecipitation", host.stringSchema("Has precipitation (true/false, default true)"),
+						"temperature", host.stringSchema("Temperature (default 0.8)"),
+						"downfall", host.stringSchema("Downfall (default 0.4)"),
+						"skyColor", host.stringSchema("Sky color decimal (default 7907327)"),
+						"fogColor", host.stringSchema("Fog color decimal (default 12638463)"),
+						"waterColor", host.stringSchema("Water color decimal (default 4159204)"),
+						"waterFogColor", host.stringSchema("Water fog color decimal (default 329011)"),
+						"carvers", host.objectPropSchema("Carver object or list (default overworld cave/canyon)"),
+						"features", host.objectPropSchema("Feature step array (default empty steps)"),
+						"spawners", host.objectPropSchema("Spawner map (default empty)")
+				), "biomeName"),
+				params -> createDatapackBiome(params));
+
+		mcpServer.registerTool("createDatapackDimension", "Write a datapack dimension JSON file directly into the workspace data folder",
+				host.objectSchema(host.props(
+						"dimensionName", host.stringSchema("Dimension name"),
+						"dimensionType", host.stringSchema("Dimension type ID (default minecraft:overworld)"),
+						"generatorType", host.stringSchema("Generator type: noise, flat, debug (default noise)"),
+						"noiseSettings", host.stringSchema("Noise settings ID for noise generator (default minecraft:overworld)"),
+						"biomeSource", host.objectPropSchema("Biome source object (default fixed plains)"),
+						"flatLayers", host.objectPropSchema("Flat world layers array for flat generator")
+				), "dimensionName"),
+				params -> createDatapackDimension(params));
+
+		mcpServer.registerTool("createDatapackDimensionType", "Write a datapack dimension_type JSON file directly into the workspace data folder",
+				host.objectSchema(host.props(
+						"dimensionTypeName", host.stringSchema("Dimension type name"),
+						"ambientLight", host.stringSchema("Ambient light (default 0.0)"),
+						"bedWorks", host.stringSchema("Bed works (true/false, default true)"),
+						"coordinateScale", host.stringSchema("Coordinate scale (default 1.0)"),
+						"effects", host.stringSchema("Effects dimension ID (default minecraft:overworld)"),
+						"hasCeiling", host.stringSchema("Has ceiling (true/false, default false)"),
+						"hasRaids", host.stringSchema("Has raids (true/false, default true)"),
+						"hasSkylight", host.stringSchema("Has skylight (true/false, default true)"),
+						"height", host.stringSchema("Height (default 384)"),
+						"logicalHeight", host.stringSchema("Logical height (default 384)"),
+						"minY", host.stringSchema("Minimum Y (default -64)"),
+						"ultrawarm", host.stringSchema("Ultrawarm (true/false, default false)"),
+						"natural", host.stringSchema("Natural (true/false, default true)"),
+						"piglinSafe", host.stringSchema("Piglin safe (true/false, default false)"),
+						"respawnAnchorWorks", host.stringSchema("Respawn anchor works (true/false, default false)"),
+						"infiniburn", host.stringSchema("Infiniburn tag (default #minecraft:infiniburn_overworld)"),
+						"monsterSpawnLightLevel", host.objectPropSchema("Monster spawn light level object or int")
+				), "dimensionTypeName"),
+				params -> createDatapackDimensionType(params));
+
+		mcpServer.registerTool("createDatapackCarver", "Write a datapack configured_carver JSON file directly into the workspace data folder",
+				host.objectSchema(host.props(
+						"carverName", host.stringSchema("Carver name"),
+						"carverType", host.stringSchema("Carver type: cave, canyon, nether_cave (default cave)"),
+						"replaceableTag", host.stringSchema("Replaceable block tag (default minecraft:overworld_carver_replaceables)"),
+						"probability", host.stringSchema("Probability (default 0.15)"),
+						"yMin", host.stringSchema("Minimum Y absolute (default 10)"),
+						"yMax", host.stringSchema("Maximum Y absolute (default 180)"),
+						"lavaLevel", host.stringSchema("Lava level above bottom (default 8)")
+				), "carverName"),
+				params -> createDatapackCarver(params));
+
+		mcpServer.registerTool("createMcfunction", "Write a datapack .mcfunction file directly into the workspace data folder",
+				host.objectSchema(host.props(
+						"functionName", host.stringSchema("Function file name without extension"),
+						"commands", host.objectPropSchema("List of commands (without leading /)")
+				), "functionName", "commands"),
+				params -> createMcfunction(params));
 	}
 
 	private McpTypes.ToolResult getLatestLog(Map<String, Object> params) {
@@ -700,6 +769,312 @@ public class McpPublishingAndVerificationService {
 		} catch (Exception e) {
 			return host.createErrorResult("Client verification failed: " + e.getMessage());
 		}
+	}
+
+	private McpTypes.ToolResult createDatapackBiome(Map<String, Object> params) {
+		String biomeName = stringParam(params, "biomeName");
+		if (biomeName == null) return host.createErrorResult("biomeName is required");
+		String safeName = biomeName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			String namespace = workspace.getWorkspaceSettings().getModID().toLowerCase(Locale.ROOT);
+			File biomeDir = new File(workspace.getFolderManager().getWorkspaceFolder(),
+					"src/main/resources/data/" + namespace + "/worldgen/biome");
+			biomeDir.mkdirs();
+
+			ObjectNode biome = objectMapper.createObjectNode();
+			biome.put("has_precipitation", toBoolean(params.get("hasPrecipitation"), true));
+			biome.put("temperature", (float) toDouble(params.get("temperature"), 0.8));
+			biome.put("downfall", (float) toDouble(params.get("downfall"), 0.4));
+
+			ObjectNode effects = biome.putObject("effects");
+			effects.put("fog_color", toInt(params.get("fogColor"), 12638463));
+			effects.put("sky_color", toInt(params.get("skyColor"), 7907327));
+			effects.put("water_color", toInt(params.get("waterColor"), 4159204));
+			effects.put("water_fog_color", toInt(params.get("waterFogColor"), 329011));
+			ObjectNode mood = effects.putObject("mood_sound");
+			mood.put("block_search_extent", 8);
+			mood.put("offset", 2.0);
+			mood.put("sound", "minecraft:ambient.cave");
+			mood.put("tick_delay", 6000);
+
+			ObjectNode carvers = biome.putObject("carvers");
+			ArrayNode airCarvers = carvers.putArray("air");
+			Object carversParam = params.get("carvers");
+			if (carversParam instanceof List<?> list) {
+				for (Object o : list) airCarvers.add(String.valueOf(o));
+			} else if (carversParam instanceof Map<?, ?> cm && cm.get("air") instanceof List<?> list) {
+				for (Object o : list) airCarvers.add(String.valueOf(o));
+			} else {
+				airCarvers.add("minecraft:cave");
+				airCarvers.add("minecraft:cave_extra_underground");
+				airCarvers.add("minecraft:canyon");
+			}
+
+			ArrayNode features = biome.putArray("features");
+			Object featuresParam = params.get("features");
+			if (featuresParam instanceof List<?> fl) {
+				for (Object step : fl) {
+					ArrayNode stepArr = features.addArray();
+					if (step instanceof List<?> sl) {
+						for (Object o : sl) stepArr.add(String.valueOf(o));
+					}
+				}
+			} else {
+				for (int i = 0; i < 11; i++) features.addArray();
+			}
+
+			ObjectNode spawners = biome.putObject("spawners");
+			Object spawnersParam = params.get("spawners");
+			if (spawnersParam instanceof Map<?, ?> sm) {
+				spawners.setAll((ObjectNode) toJsonNode((Map<String, Object>) sm));
+			}
+			biome.putObject("spawn_costs");
+
+			File out = new File(biomeDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(out, biome);
+			return host.createSuccessResult("Wrote datapack biome " + biomeName + " to " + out.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to write datapack biome: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult createDatapackDimension(Map<String, Object> params) {
+		String dimensionName = stringParam(params, "dimensionName");
+		if (dimensionName == null) return host.createErrorResult("dimensionName is required");
+		String safeName = dimensionName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			String namespace = workspace.getWorkspaceSettings().getModID().toLowerCase(Locale.ROOT);
+			File dimDir = new File(workspace.getFolderManager().getWorkspaceFolder(),
+					"src/main/resources/data/" + namespace + "/dimension");
+			dimDir.mkdirs();
+
+			String dimensionType = stringParam(params, "dimensionType", "minecraft:overworld");
+			String generatorType = stringParam(params, "generatorType", "noise").toLowerCase(Locale.ROOT);
+
+			ObjectNode root = objectMapper.createObjectNode();
+			root.put("type", dimensionType);
+
+			ObjectNode generator = root.putObject("generator");
+			generator.put("type", "minecraft:" + generatorType);
+
+			switch (generatorType) {
+			case "flat" -> {
+				ObjectNode settings = generator.putObject("settings");
+				settings.put("biome", "minecraft:plains");
+				ArrayNode layers = settings.putArray("layers");
+				Object flatLayersParam = params.get("flatLayers");
+				if (flatLayersParam instanceof List<?> list) {
+					for (Object o : list) {
+						if (o instanceof Map<?, ?> m) {
+							ObjectNode layer = layers.addObject();
+							layer.put("block", stringParam(m, "block", "minecraft:stone"));
+							layer.put("height", toInt(m.get("height"), 1));
+						}
+					}
+				} else {
+					ObjectNode layer = layers.addObject();
+					layer.put("block", "minecraft:bedrock");
+					layer.put("height", 1);
+					ObjectNode layer2 = layers.addObject();
+					layer2.put("block", "minecraft:stone");
+					layer2.put("height", 63);
+				}
+				settings.putArray("structure_overrides");
+			}
+			case "noise" -> {
+				generator.put("settings", stringParam(params, "noiseSettings", "minecraft:overworld"));
+				ObjectNode biomeSource = generator.putObject("biome_source");
+				Object biomeSourceParam = params.get("biomeSource");
+				if (biomeSourceParam instanceof Map<?, ?> bm) {
+					String type = stringParam(bm, "type", "fixed");
+					biomeSource.put("type", type.startsWith("minecraft:") ? type : "minecraft:" + type);
+					if (bm.containsKey("biome")) biomeSource.put("biome", stringParam(bm, "biome", "minecraft:plains"));
+					if (bm.containsKey("biomes") && bm.get("biomes") instanceof List<?> list) {
+						ArrayNode arr = biomeSource.putArray("biomes");
+						for (Object o : list) arr.add(String.valueOf(o));
+					}
+					if (bm.containsKey("preset")) biomeSource.put("preset", stringParam(bm, "preset", "overworld"));
+				} else {
+					biomeSource.put("type", "minecraft:fixed");
+					biomeSource.put("biome", "minecraft:plains");
+				}
+			}
+			case "debug" -> {
+				// debug generator has no extra fields
+			}
+			}
+
+			File out = new File(dimDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(out, root);
+			return host.createSuccessResult("Wrote datapack dimension " + dimensionName + " to " + out.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to write datapack dimension: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult createDatapackDimensionType(Map<String, Object> params) {
+		String typeName = stringParam(params, "dimensionTypeName");
+		if (typeName == null) return host.createErrorResult("dimensionTypeName is required");
+		String safeName = typeName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			String namespace = workspace.getWorkspaceSettings().getModID().toLowerCase(Locale.ROOT);
+			File dimTypeDir = new File(workspace.getFolderManager().getWorkspaceFolder(),
+					"src/main/resources/data/" + namespace + "/dimension_type");
+			dimTypeDir.mkdirs();
+
+			ObjectNode root = objectMapper.createObjectNode();
+			root.put("ambient_light", (float) toDouble(params.get("ambientLight"), 0.0));
+			root.put("bed_works", toBoolean(params.get("bedWorks"), true));
+			root.put("coordinate_scale", toDouble(params.get("coordinateScale"), 1.0));
+			root.put("effects", stringParam(params, "effects", "minecraft:overworld"));
+			root.put("has_ceiling", toBoolean(params.get("hasCeiling"), false));
+			root.put("has_raids", toBoolean(params.get("hasRaids"), true));
+			root.put("has_skylight", toBoolean(params.get("hasSkylight"), true));
+			root.put("height", toInt(params.get("height"), 384));
+			root.put("infiniburn", stringParam(params, "infiniburn", "#minecraft:infiniburn_overworld"));
+			root.put("logical_height", toInt(params.get("logicalHeight"), 384));
+			root.put("min_y", toInt(params.get("minY"), -64));
+			root.put("natural", toBoolean(params.get("natural"), true));
+			root.put("piglin_safe", toBoolean(params.get("piglinSafe"), false));
+			root.put("respawn_anchor_works", toBoolean(params.get("respawnAnchorWorks"), false));
+			root.put("ultrawarm", toBoolean(params.get("ultrawarm"), false));
+
+			ObjectNode monsterLight = root.putObject("monster_spawn_light_level");
+			Object msl = params.get("monsterSpawnLightLevel");
+			if (msl instanceof Number n) {
+				monsterLight.put("type", "minecraft:uniform");
+				monsterLight.put("max_inclusive", n.intValue());
+				monsterLight.put("min_inclusive", 0);
+			} else if (msl instanceof Map<?, ?> mm) {
+				monsterLight.put("type", "minecraft:" + stringParam(mm, "type", "uniform"));
+				if (mm.containsKey("max_inclusive")) monsterLight.put("max_inclusive", toInt(mm.get("max_inclusive"), 7));
+				if (mm.containsKey("min_inclusive")) monsterLight.put("min_inclusive", toInt(mm.get("min_inclusive"), 0));
+				if (mm.containsKey("value")) monsterLight.put("value", toInt(mm.get("value"), 7));
+			} else {
+				monsterLight.put("type", "minecraft:uniform");
+				monsterLight.put("max_inclusive", 7);
+				monsterLight.put("min_inclusive", 0);
+			}
+			root.put("monster_spawn_block_light_limit", toInt(params.get("monsterSpawnBlockLightLimit"), 0));
+
+			File out = new File(dimTypeDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(out, root);
+			return host.createSuccessResult("Wrote datapack dimension_type " + typeName + " to " + out.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to write datapack dimension_type: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult createDatapackCarver(Map<String, Object> params) {
+		String carverName = stringParam(params, "carverName");
+		if (carverName == null) return host.createErrorResult("carverName is required");
+		String safeName = carverName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			String namespace = workspace.getWorkspaceSettings().getModID().toLowerCase(Locale.ROOT);
+			File carverDir = new File(workspace.getFolderManager().getWorkspaceFolder(),
+					"src/main/resources/data/" + namespace + "/worldgen/configured_carver");
+			carverDir.mkdirs();
+
+			String carverType = stringParam(params, "carverType", "cave").toLowerCase(Locale.ROOT);
+			if (!carverType.startsWith("minecraft:")) carverType = "minecraft:" + carverType;
+
+			ObjectNode root = objectMapper.createObjectNode();
+			root.put("type", carverType);
+			ObjectNode config = root.putObject("config");
+
+			ObjectNode debug = config.putObject("debug_settings");
+			debug.putObject("air_state").put("Name", "minecraft:crimson_button").putObject("Properties")
+					.put("face", "wall").put("facing", "north").put("powered", "false");
+			debug.putObject("barrier_state").put("Name", "minecraft:glass");
+			debug.putObject("lava_state").put("Name", "minecraft:orange_stained_glass");
+			debug.putObject("water_state").put("Name", "minecraft:candle").putObject("Properties")
+					.put("candles", "1").put("lit", "false").put("waterlogged", "false");
+
+			if (carverType.contains("canyon")) {
+				config.putObject("lava_level").put("above_bottom", toInt(params.get("lavaLevel"), 8));
+				config.put("probability", (float) toDouble(params.get("probability"), 0.01));
+				config.put("replaceable", stringParam(params, "replaceableTag", "minecraft:overworld_carver_replaceables"));
+				ObjectNode shape = config.putObject("shape");
+				shape.putObject("distance_factor").put("type", "minecraft:uniform").put("max_exclusive", 1.0).put("min_inclusive", 0.75);
+				shape.putObject("horizontal_radius_factor").put("type", "minecraft:uniform").put("max_exclusive", 1.0).put("min_inclusive", 0.75);
+				shape.putObject("thickness").put("type", "minecraft:trapezoid").put("max", 6.0).put("min", 0.0).put("plateau", 2.0);
+				shape.put("vertical_radius_center_factor", 0.0);
+				shape.put("vertical_radius_default_factor", 1.0);
+				shape.put("width_smoothness", 3);
+				config.putObject("vertical_rotation").put("type", "minecraft:uniform").put("max_exclusive", 0.125).put("min_inclusive", -0.125);
+				int yMin = toInt(params.get("yMin"), 10);
+				int yMax = toInt(params.get("yMax"), 67);
+				ObjectNode y = config.putObject("y");
+				y.put("type", "minecraft:uniform");
+				y.putObject("max_inclusive").put("absolute", yMax);
+				y.putObject("min_inclusive").put("absolute", yMin);
+				config.put("yScale", 3.0);
+			} else {
+				config.putObject("floor_level").put("type", "minecraft:uniform").put("max_exclusive", -0.4).put("min_inclusive", -1.0);
+				config.putObject("horizontal_radius_multiplier").put("type", "minecraft:uniform").put("max_exclusive", 1.4).put("min_inclusive", 0.7);
+				config.putObject("lava_level").put("above_bottom", toInt(params.get("lavaLevel"), 8));
+				config.put("probability", (float) toDouble(params.get("probability"), 0.15));
+				String replaceable = stringParam(params, "replaceableTag", "minecraft:overworld_carver_replaceables");
+				if (!replaceable.startsWith("#")) replaceable = "#" + replaceable;
+				config.put("replaceable", replaceable);
+				config.putObject("vertical_radius_multiplier").put("type", "minecraft:uniform").put("max_exclusive", 1.3).put("min_inclusive", 0.8);
+				int yMin = toInt(params.get("yMin"), 8);
+				int yMax = toInt(params.get("yMax"), 180);
+				ObjectNode y = config.putObject("y");
+				y.put("type", "minecraft:uniform");
+				y.putObject("max_inclusive").put("absolute", yMax);
+				y.putObject("min_inclusive").put("absolute", yMin);
+				config.putObject("yScale").put("type", "minecraft:uniform").put("max_exclusive", 0.9).put("min_inclusive", 0.1);
+			}
+
+			File out = new File(carverDir, safeName + ".json");
+			objectMapper.writerWithDefaultPrettyPrinter().writeValue(out, root);
+			return host.createSuccessResult("Wrote datapack carver " + carverName + " to " + out.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to write datapack carver: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult createMcfunction(Map<String, Object> params) {
+		String functionName = stringParam(params, "functionName");
+		Object commandsObj = params.get("commands");
+		if (functionName == null || commandsObj == null)
+			return host.createErrorResult("functionName and commands are required");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			String namespace = workspace.getWorkspaceSettings().getModID().toLowerCase(Locale.ROOT);
+			File functionDir = new File(workspace.getFolderManager().getWorkspaceFolder(),
+					"src/main/resources/data/" + namespace + "/function");
+			functionDir.mkdirs();
+
+			List<String> commands = new ArrayList<>();
+			if (commandsObj instanceof List<?> list) {
+				for (Object o : list) commands.add(String.valueOf(o));
+			} else if (commandsObj instanceof String s) {
+				commands.addAll(Arrays.asList(s.split("\\r?\\n")));
+			}
+
+			File out = new File(functionDir, functionName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_") + ".mcfunction");
+			Files.writeString(out.toPath(), String.join("\n", commands), StandardCharsets.UTF_8);
+			return host.createSuccessResult("Wrote .mcfunction " + out.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to write .mcfunction: " + e.getMessage());
+		}
+	}
+
+	private boolean toBoolean(Object value, boolean defaultValue) {
+		if (value == null) return defaultValue;
+		if (value instanceof Boolean b) return b;
+		return Boolean.parseBoolean(String.valueOf(value));
 	}
 
 	// ---- helpers ----

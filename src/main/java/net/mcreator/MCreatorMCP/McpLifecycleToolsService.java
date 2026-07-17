@@ -143,6 +143,34 @@ public class McpLifecycleToolsService {
 				), "elementName", "modelName", "modelType"),
 				params -> bindCustomModel(params));
 
+		// Element folders
+		mcpServer.registerTool("listElementFolders", "List workspace folder tree for organizing elements",
+				host.objectSchema(Map.of()),
+				params -> listElementFolders(params));
+		mcpServer.registerTool("createElementFolder", "Create a workspace folder for elements",
+				host.objectSchema(host.props(
+						"folderName", host.stringSchema("New folder name"),
+						"parentPath", host.stringSchema("Parent folder path, empty for root")
+				), "folderName"),
+				params -> createElementFolder(params));
+		mcpServer.registerTool("moveElementsToFolder", "Move multiple elements to a workspace folder",
+				host.objectSchema(host.props(
+						"elementNames", host.objectPropSchema("List of element names"),
+						"folderPath", host.stringSchema("Target folder path, empty for root")
+				), "elementNames", "folderPath"),
+				params -> moveElementsToFolder(params));
+
+		// Prompt-driven texture generation
+		mcpServer.registerTool("generateTextureFromPrompt", "Generate a placeholder texture from a text prompt (draws prompt text and a color hash pattern)",
+				host.objectSchema(host.props(
+						"prompt", host.stringSchema("Text prompt describing the desired texture"),
+						"textureName", host.stringSchema("Output texture name"),
+						"textureType", host.stringSchema("Texture type: BLOCK, ITEM, ENTITY, etc."),
+						"width", host.stringSchema("Width in pixels (default 64)"),
+						"height", host.stringSchema("Height in pixels (default 64)")
+				), "prompt", "textureName", "textureType"),
+				params -> generateTextureFromPrompt(params));
+
 		// CI / automation
 		mcpServer.registerTool("runGradleTask", "Run an arbitrary Gradle task in the workspace",
 				host.objectSchema(host.props(
@@ -164,6 +192,15 @@ public class McpLifecycleToolsService {
 						"timeoutSeconds", host.stringSchema("Timeout in seconds (default: 180)")
 				), "scenarioName", "commands"),
 				params -> runTestScenario(params));
+		mcpServer.registerTool("verifyInWorld", "Run an in-world verification: start a server, execute place/break/inspect commands via RCON, and optionally capture a client screenshot",
+				host.objectSchema(host.props(
+						"commands", host.objectPropSchema("List of in-game commands to run via RCON"),
+						"includeClientScreenshot", host.stringSchema("Also launch the client and capture a screenshot (true/false, default false)"),
+						"timeoutSeconds", host.stringSchema("Timeout in seconds (default 180)"),
+						"rconPassword", host.stringSchema("RCON password (default mcp12345)"),
+						"outputPath", host.stringSchema("Client screenshot output path (default /tmp/mcp_inworld_screenshot.png)")
+				), "commands"),
+				params -> verifyInWorld(params));
 		mcpServer.registerTool("exportModrinth", "Export the built mod as a Modrinth-compatible .mrpack",
 				host.objectSchema(host.props(
 						"outputPath", host.stringSchema("Output .mrpack file path"),
@@ -1094,6 +1131,15 @@ public class McpLifecycleToolsService {
 		return s.equals("true") || s.equals("yes") || s.equals("1") || s.equals("on");
 	}
 
+	private String runCommand(List<String> command) throws IOException, InterruptedException {
+		ProcessBuilder pb = new ProcessBuilder(command);
+		pb.redirectErrorStream(true);
+		Process p = pb.start();
+		String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+		p.waitFor();
+		return output;
+	}
+
 	// ------------------------------------------------------------------
 	// Workspace / session management
 	// ------------------------------------------------------------------
@@ -1365,6 +1411,276 @@ public class McpLifecycleToolsService {
 			int requestId;
 			int type;
 			String payload;
+		}
+	}
+
+	private McpTypes.ToolResult listElementFolders(Map<String, Object> params) {
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			FolderElement root = workspace.getFoldersRoot();
+			return host.createSuccessResult(objectMapper.writeValueAsString(folderTree(root)));
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to list folders: " + e.getMessage());
+		}
+	}
+
+	private Map<String, Object> folderTree(FolderElement folder) {
+		Map<String, Object> node = new LinkedHashMap<>();
+		node.put("name", folder.getName());
+		node.put("path", folder.getPath());
+		node.put("isRoot", folder.isRoot());
+		List<Map<String, Object>> children = new ArrayList<>();
+		for (FolderElement child : folder.getDirectFolderChildren()) {
+			children.add(folderTree(child));
+		}
+		node.put("children", children);
+		return node;
+	}
+
+	private McpTypes.ToolResult createElementFolder(Map<String, Object> params) {
+		String folderName = stringParam(params, "folderName");
+		String parentPath = stringParam(params, "parentPath", "");
+		if (folderName == null) return host.createErrorResult("folderName is required");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			FolderElement parent = parentPath.isEmpty() ? workspace.getFoldersRoot() :
+					FolderElement.findFolderByPath(workspace, parentPath);
+			if (parent == null) return host.createErrorResult("Parent folder not found: " + parentPath);
+			FolderElement newFolder = new FolderElement(folderName, parent);
+			SwingUtilities.invokeAndWait(() -> {
+				parent.addChild(newFolder);
+				workspace.markDirty();
+			});
+			return host.createSuccessResult("Created folder " + newFolder.getPath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to create folder: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult moveElementsToFolder(Map<String, Object> params) {
+		Object elementNamesObj = params.get("elementNames");
+		String folderPath = stringParam(params, "folderPath", "");
+		if (elementNamesObj == null) return host.createErrorResult("elementNames is required");
+		List<String> elementNames = new ArrayList<>();
+		if (elementNamesObj instanceof List<?> list) {
+			for (Object o : list) elementNames.add(String.valueOf(o));
+		} else if (elementNamesObj instanceof String s) {
+			elementNames.addAll(Arrays.asList(s.split("\\s*,\\s*")));
+		}
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			FolderElement folder = folderPath.isEmpty() ? workspace.getFoldersRoot() :
+					FolderElement.findFolderByPath(workspace, folderPath);
+			if (folder == null) return host.createErrorResult("Folder not found: " + folderPath);
+			List<String> moved = new ArrayList<>();
+			for (String elementName : elementNames) {
+				ModElement element = workspace.getModElementByName(elementName);
+				if (element == null) continue;
+				SwingUtilities.invokeAndWait(() -> {
+					element.setParentFolder(folder);
+					workspace.markDirty();
+				});
+				moved.add(elementName);
+			}
+			return host.createSuccessResult("Moved " + moved.size() + " elements to " + (folderPath.isEmpty() ? "root" : folderPath));
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to move elements: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult generateTextureFromPrompt(Map<String, Object> params) {
+		String prompt = stringParam(params, "prompt");
+		String textureName = stringParam(params, "textureName");
+		String textureTypeName = stringParam(params, "textureType");
+		if (prompt == null || textureName == null || textureTypeName == null)
+			return host.createErrorResult("prompt, textureName, and textureType are required");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			TextureType textureType;
+			try {
+				textureType = TextureType.valueOf(textureTypeName.trim().toUpperCase(Locale.ROOT));
+			} catch (Exception e) {
+				return host.createErrorResult("Unknown texture type: " + textureTypeName);
+			}
+			int width = toInt(params.get("width"), 64);
+			int height = toInt(params.get("height"), 64);
+
+			BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+			int hash = prompt.hashCode();
+			Color bg = new Color((hash >> 16) & 0xFF, (hash >> 8) & 0xFF, hash & 0xFF);
+			Color fg = new Color(255 - bg.getRed(), 255 - bg.getGreen(), 255 - bg.getBlue());
+
+			Graphics2D g = image.createGraphics();
+			g.setColor(bg);
+			g.fillRect(0, 0, width, height);
+			g.setColor(fg);
+			for (int y = 0; y < height; y += 8) {
+				for (int x = 0; x < width; x += 8) {
+					if ((hash ^ (x * 31 + y)) % 7 == 0) g.fillRect(x, y, 4, 4);
+				}
+			}
+			g.setColor(fg);
+			String fontName = g.getFont().getName();
+			int fontSize = Math.max(8, Math.min(width, height) / 12);
+			g.setFont(new Font(fontName, Font.BOLD, fontSize));
+			String shortPrompt = prompt.length() > 40 ? prompt.substring(0, 37) + "..." : prompt;
+			g.drawString(shortPrompt, 4, height / 2);
+			g.dispose();
+
+			File textureFile = workspace.getFolderManager().getTextureFile(textureName.replaceAll("\\.png$", ""), textureType);
+			textureFile.getParentFile().mkdirs();
+			ImageIO.write(image, "png", textureFile);
+
+			File promptFile = new File(textureFile.getParentFile(), textureFile.getName().replace(".png", "") + ".prompt.txt");
+			Files.writeString(promptFile.toPath(), prompt, StandardCharsets.UTF_8);
+
+			return host.createSuccessResult("Generated placeholder texture from prompt at " + textureFile.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to generate texture from prompt: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult verifyInWorld(Map<String, Object> params) {
+		Object commandsObj = params.get("commands");
+		boolean includeClient = toBoolean(params.get("includeClientScreenshot"), false);
+		int timeout = toInt(params.get("timeoutSeconds"), 180);
+		String password = stringParam(params, "rconPassword", "mcp12345");
+		int port = toInt(params.get("rconPort"), 25575);
+		String outputPath = stringParam(params, "outputPath", "/tmp/mcp_inworld_screenshot.png");
+
+		if (commandsObj == null)
+			return host.createErrorResult("commands is required");
+		List<String> commands = new ArrayList<>();
+		if (commandsObj instanceof List<?> list) {
+			for (Object o : list) commands.add(String.valueOf(o));
+		}
+
+		Process server = null;
+		Process client = null;
+		Process xvfb = null;
+		Workspace workspace = mcreator.getWorkspace();
+		if (workspace == null) return host.createErrorResult("No workspace loaded");
+		File workspaceFolder = workspace.getFolderManager().getWorkspaceFolder();
+		File gradlew = new File(workspaceFolder, "gradlew");
+		if (!gradlew.exists()) return host.createErrorResult("Could not find gradlew");
+
+		Map<String, Object> result = new LinkedHashMap<>();
+		try {
+			File logsDir = new File(workspaceFolder, "run/logs");
+			logsDir.mkdirs();
+			File latestLog = new File(logsDir, "latest.log");
+			if (latestLog.exists()) latestLog.delete();
+			File debugLog = new File(logsDir, "debug.log");
+			if (debugLog.exists()) debugLog.delete();
+
+			server = new ProcessBuilder(gradlew.getAbsolutePath(), "runServer", "--no-daemon")
+					.directory(workspaceFolder)
+					.redirectOutput(new File(logsDir, "server_run.log"))
+					.redirectError(new File(logsDir, "server_run_error.log"))
+					.start();
+
+			long start = System.currentTimeMillis();
+			boolean serverReady = false;
+			while (System.currentTimeMillis() - start < timeout * 1000L) {
+				if (latestLog.exists()) {
+					List<String> lines = tailLog(latestLog, 20);
+					for (String line : lines) {
+						if (line.contains("RCON running on") && line.contains(String.valueOf(port))) {
+							serverReady = true;
+							break;
+						}
+					}
+				}
+				if (serverReady) break;
+				if (!server.isAlive()) break;
+				Thread.sleep(3000);
+			}
+
+			if (!serverReady) {
+				if (server.isAlive()) server.destroyForcibly();
+				return host.createErrorResult("Server did not start RCON within timeout");
+			}
+
+			List<String> responses = new ArrayList<>();
+			try (RConClient rcon = new RConClient("127.0.0.1", port, 30000)) {
+				if (rcon.login(password)) {
+					for (String command : commands) {
+						String resp = rcon.sendCommand(command);
+						responses.add(command + " -> " + resp.trim());
+					}
+				} else {
+					responses.add("RCON login failed");
+				}
+			}
+
+			result.put("serverReady", true);
+			result.put("commandsExecuted", commands.size());
+			result.put("responses", responses);
+
+			if (includeClient) {
+				int display = 99;
+				while (new File("/tmp/.X" + display + "-lock").exists() || new File("/tmp/.X11-unix/X" + display).exists()) {
+					display++;
+				}
+				String displayStr = ":" + display;
+				xvfb = new ProcessBuilder("Xvfb", displayStr, "-screen", "0", "1280x720x24", "-ac", "+extension", "GLX", "+render", "-noreset")
+						.redirectOutput(new File(workspaceFolder, "run/logs/xvfb.log"))
+						.redirectError(new File(workspaceFolder, "run/logs/xvfb_error.log"))
+						.start();
+				Thread.sleep(1000);
+
+				File clientLog = new File(logsDir, "client_run.log");
+				ProcessBuilder pb = new ProcessBuilder(gradlew.getAbsolutePath(), "runClient", "--no-daemon");
+				pb.directory(workspaceFolder);
+				pb.environment().put("DISPLAY", displayStr);
+				client = pb.redirectOutput(clientLog)
+						.redirectError(new File(logsDir, "client_run_error.log"))
+						.start();
+
+				File screenshot = new File(outputPath);
+				screenshot.getParentFile().mkdirs();
+				boolean clientLoaded = false;
+				long clientStart = System.currentTimeMillis();
+				while (System.currentTimeMillis() - clientStart < timeout * 1000L) {
+					if (clientLog.exists()) {
+						List<String> lines = tailLog(clientLog, 30);
+						for (String line : lines) {
+							if (line.contains("Created:") && line.contains("atlas")) {
+								clientLoaded = true;
+								break;
+							}
+						}
+					}
+					if (clientLoaded) break;
+					if (!client.isAlive()) break;
+					Thread.sleep(3000);
+				}
+
+				if (clientLoaded) {
+					Thread.sleep(2000);
+					runCommand(List.of("/usr/bin/import", "-display", displayStr, "-window", "root", screenshot.getAbsolutePath()));
+					result.put("clientScreenshot", screenshot.getAbsolutePath());
+					result.put("clientLoaded", true);
+				} else {
+					result.put("clientLoaded", false);
+					result.put("clientScreenshot", null);
+				}
+
+				if (client.isAlive()) client.destroyForcibly();
+				xvfb.destroyForcibly();
+			}
+
+			server.destroyForcibly();
+			return host.createSuccessResult(objectMapper.writeValueAsString(result));
+		} catch (Exception e) {
+			if (server != null && server.isAlive()) server.destroyForcibly();
+			if (client != null && client.isAlive()) client.destroyForcibly();
+			if (xvfb != null && xvfb.isAlive()) xvfb.destroyForcibly();
+			return host.createErrorResult("In-world verification failed: " + e.getMessage());
 		}
 	}
 }

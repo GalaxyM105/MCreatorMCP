@@ -10,7 +10,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - Health endpoint: `http://localhost:5175/health`
 
 ## Tool Count
-`tools/list` returned **151 tools** after the Phase 7 custom-model/directional-block/procedure-first/datapack-diagnostic expansion (all previous categories + `bindCustomModel` JSON/OBJ/Java model binding + `createProcedureAndAttach` + `createDatapackStructure`/`createDatapackOre` + `diagnoseBuildErrors`).
+`tools/list` returned **164 tools** after the Phase 8 final expansion (`listProcedureTemplates`/`applyProcedureTemplate`, `createDatapackBiome`/`createDatapackDimension`/`createDatapackDimensionType`/`createDatapackCarver`/`createMcfunction`, `exportBedrockAddon`, `listElementFolders`/`createElementFolder`/`moveElementsToFolder`, `generateTextureFromPrompt`, and `verifyInWorld`).
 
 ## Core Workspace Tools
 
@@ -251,3 +251,36 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 3. The test workspace contains overlapping villager-profession POI blocks and an advancement with a missing item, which produce non-fatal server log errors.
 4. `importWorkspace` extracts the workspace `.zip` but cannot automatically open it in the running MCreator window; open the extracted `.mcreator` file manually or restart MCreator with that path.
 5. Multi-workspace/no-workspace mode and safe generator migration are not exposed as tools because MCreator's active `MCreator` instance is bound to a single workspace window; these remain documented limitations.
+
+## Phase 8 Tests — Final Expansion: Procedure Templates, Datapack-Only JSON, Bedrock Packaging, Folders, Prompt Textures, In-World Verification
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `listProcedureTemplates` | no args | returned 7 templates (`empty`, `give_item`, `send_message`, `execute_command`, `set_block`, `spawn_entity`, `apply_potion`) with default values |
+| `applyProcedureTemplate` | `templateName=give_item`, `elementName=TestItem`, `eventType=onRightClickedInAir`, `values={item:minecraft:emerald, amount:3}` | created and linked procedure `TestItemOnRightClickedInAirGiveItem`; generated code compiled and loaded |
+| `createDatapackBiome` | `biomeName=McpTestBiome` | wrote `worldgen/biome/mcptestbiome.json` with valid 1.21.1 biome schema |
+| `createDatapackDimensionType` | `dimensionTypeName=mcp_test_type` | wrote `dimension_type/mcp_test_type.json` with valid fields |
+| `createDatapackDimension` | `dimensionName=mcp_test_dim`, `dimensionType=mcptest7:mcp_test_type` | wrote `dimension/mcp_test_dim.json` with noise generator and fixed plains biome source |
+| `createDatapackCarver` | `carverName=mcp_test_carver` | wrote `worldgen/configured_carver/mcp_test_carver.json`; initial `replaceable` tag missing `#` and nested `y` anchors were fixed and re-tested |
+| `createMcfunction` | `functionName=test_hello`, `commands=[say Hello from MCP, give @a minecraft:dirt 1]` | wrote `function/test_hello.mcfunction` with two commands |
+| `exportBedrockAddon` | `packName=mcp_test`, `outputPath=/tmp/mcp_test.mcaddon` | produced combined `.mcaddon` containing `mcp_test_rp` resource pack and `mcp_test_bp_behavior` behavior pack |
+| `listElementFolders` | no args | returned workspace folder tree (root `~` plus newly created `TestFolder`) |
+| `createElementFolder` | `folderName=TestFolder` | created `~/TestFolder` in the workspace |
+| `moveElementsToFolder` | `elementNames=[TestItem, TestBlock]`, `folderPath=~/TestFolder` | moved both elements to the folder |
+| `generateTextureFromPrompt` | `prompt='A glowing red crystal ore block'`, `textureName=crystal_ore`, `textureType=BLOCK`, `width=64`, `height=64` | generated `crystal_ore.png` plus `crystal_ore.prompt.txt` sidecar in `assets/mcptest7/textures/block` |
+| `verifyInWorld` | `commands=[setblock 0 70 0 mcptest7:test_block keep, data get block 0 70 0, setblock 0 70 0 minecraft:air, summon mcptest7:model_mob 0 70 0, data get entity @e[type=mcptest7:model_mob,limit=1] Health]`, `includeClientScreenshot=false` | server reached `Done`, RCON connected, custom block placed/broken, `ModelMob` summoned and `Health: 20.0f` returned |
+| `regenerateCode` / `buildForJavaEdition` | no args | regenerated 53 elements and produced `modid-1.0.jar` (148 KB); `./gradlew build` from workspace succeeded |
+| `runTestScenario` | `scenarioName=datapack_load`, commands executed in custom dimension | server loaded with no datapack registry errors from new biome/dimension/carver/function JSON |
+
+### Phase 8 Fixes Verified
+- `McpAdvancedToolsService` registers `listProcedureTemplates` and `applyProcedureTemplate`, which build common Blockly XML patterns (`entity_add_item`, `entity_send_chat`, `execute_command`, `block_add`, `spawn_entity`, `entity_add_potion`) and attach them via `doUpdateEventProcedure`.
+- `McpPublishingAndVerificationService` registers `createDatapackBiome`, `createDatapackDimension`, `createDatapackDimensionType`, `createDatapackCarver`, and `createMcfunction`. Datapack writers use the workspace `modID` as namespace and produce valid 1.21.1 JSON; the carver writer prefixes block tags with `#` and emits separate `max_inclusive`/`min_inclusive` vertical anchors.
+- `McpAdvancedToolsService` registers `exportBedrockAddon`, which copies resource/behavior pack folders into a temporary directory and zips them into a single `.mcaddon`.
+- `McpLifecycleToolsService` registers `listElementFolders`, `createElementFolder`, and `moveElementsToFolder` using `FolderElement` and `ModElement.setParentFolder` inside the Swing event thread.
+- `McpLifecycleToolsService` registers `generateTextureFromPrompt`, which renders a color-hash background, a pixel noise pattern, and the prompt text onto a placeholder PNG and writes a `.prompt.txt` sidecar.
+- `McpLifecycleToolsService` registers `verifyInWorld`, which starts a server via `gradlew runServer`, waits for `RCON running on`, runs commands through the existing `RConClient`, and optionally launches the client under Xvfb for a screenshot.
+
+### Known Issues / Notes (Post-Phase 8)
+1. The test workspace still contains overlapping villager-profession POI blocks and a missing advancement item, which produce non-fatal server log errors.
+2. `verifyInWorld` with `includeClientScreenshot=true` depends on a headless virtual display and may not complete world loading in a GUI-less VM; the server-side place/break/inspect commands are the reliable verification path.
+3. `generateTextureFromPrompt` produces a placeholder image; for production-quality textures an external image-generation service or manually supplied texture is still needed.
