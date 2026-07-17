@@ -1,6 +1,6 @@
 # MCreatorMCP Expanded Server — Test Results
 
-Workspace used: `MCPTtest8` (Neoforge 1.21.1 generator, mod id `mcptest8`).
+Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCPTtest8` was used for earlier Phase 1 tests.
 
 ## Environment
 - MCreator: bundled install `/home/ubuntu/repos/MCreator20262`
@@ -10,7 +10,7 @@ Workspace used: `MCPTtest8` (Neoforge 1.21.1 generator, mod id `mcptest8`).
 - Health endpoint: `http://localhost:5175/health`
 
 ## Tool Count
-`tools/list` returned **81 tools** after the expansion (workspace/element/asset/variable/build/export/validation + per-type `create<TYPE>` shortcuts + Bedrock aliases).
+`tools/list` returned **98 tools** after the Phase 2 advanced-tools expansion (workspace/element/asset/variable/build/export/validation + per-type `create<TYPE>` shortcuts + procedure/event/workflow tools + Bedrock pack tools + versioning/test-report tools).
 
 ## Core Workspace Tools
 
@@ -22,7 +22,7 @@ Workspace used: `MCPTtest8` (Neoforge 1.21.1 generator, mod id `mcptest8`).
 | `validateWorkspace` | OK | reported invalid references from earlier test elements; new elements normalized correctly |
 | `regenerateCode` | OK | triggered Gradle `build` and generated Java + JSON |
 | `buildWorkspace` | OK | completed successfully |
-| `buildForJavaEdition` | OK | produced `/home/ubuntu/MCreatorWorkspaces/MCPTtest8/build/libs/modid-1.0.jar` |
+| `buildForJavaEdition` | OK | produced `/home/ubuntu/MCreatorWorkspaces/MCPTtest7/build/libs/modid-1.0.jar` (server reached `Done!` after a manual build) |
 
 ## Element Creation Tests
 
@@ -61,18 +61,36 @@ Workspace used: `MCPTtest8` (Neoforge 1.21.1 generator, mod id `mcptest8`).
 | `exportResourcePack` | copied resources to `/tmp/mcptest8_resource_pack` |
 | `deployToGameFolder` | copied `modid-1.0.jar` to `/tmp/mcptest8_deploy/mods/` |
 
-## In-Game Verification
-- `runClient()` launched Minecraft 1.21.1 with NeoForge 21.1.232.
-- The Mods screen listed `MCP Test Mod 8 1.1.0` (3 mods total).
-- New blocks created after the `itemTexture` fix (e.g. `TestBlock2`) produced no missing-texture warnings and `TestRubyRecipe` produced no recipe parsing errors.
-- Remaining warnings were only for pre-existing test blocks whose `itemTexture` still pointed to a block texture.
-- `runServer()` previously reached `Done (4.033s)!` after accepting the EULA.
-
 ## Known Issues / Notes
-1. **Pre-existing test element references** — `SapphireOre`, `TopazOre`, `McpPickaxe`, and the first `McpRubyRecipe` were created before the item/block normalization fallback was complete. `validateWorkspace` flags them as invalid references. New elements created after the fix normalize `minecraft:diamond`, `minecraft:iron_ingot`, and custom items correctly.
+1. **Pre-existing test element references** — `SapphireOre`, `TopazOre`, `McpPickaxe`, and the first `McpRubyRecipe` (in `MCPTtest8`) were created before the item/block normalization fallback was complete. `validateWorkspace` flags them as invalid references. New elements created after the fix normalize `minecraft:diamond`, `minecraft:iron_ingot`, and custom items correctly.
 2. **Block `itemTexture`** — The first block tests set `itemTexture` to the same block texture name, causing missing texture warnings in the client. This has been fixed: `applyBlockSingleTexture` no longer copies the block texture to `itemTexture`, and `applyGeneratableElementDefaults` no longer adds a placeholder `itemTexture` for blocks.
 3. **Bedrock/resource-pack tools** are registered as MCP tools that write the corresponding pack JSON/manifest files into the workspace. Full Bedrock generation depends on the MCreator generator for the active workspace; the tools provide the programmatic bridge to create those assets.
+4. **Recipe chains** — `createRecipeChain` validates that each recipe's output appears in the next recipe's inputs, but it does not verify that referenced items/blocks exist. Agents should create ingredient items/blocks before the chain, or use `minecraft:*` references.
+
+## Advanced Tools & Workflow Tests (MCPTtest7)
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `createProcedure` | `elementName=ProcRightClick`, valid Blockly XML | created; generated `ProcRightClickProcedure.class` |
+| `updateEventProcedure` | `EventSword.onRightClickedInAir -> ProcRightClick` | linked; XML persisted |
+| `getEventProcedures` | `elementName=EventSword` | returned all event hooks with field types and linked XML |
+| `createTextureSet` | `ruby_set` (file-based PNG + animation) | created block/item textures and `.mcmeta` file |
+| `createModelFromDefinition` | `ruby_block_model` (cube_all) | wrote JSON model to assets |
+| `createRecipeChain` | smelt + craft chain | created two linked recipe elements (note: test inputs used non-existent items, so server reported recipe parse errors) |
+| `createParticleEffect` | `SparkParticle`, placeholder texture | created and generated particle classes |
+| `createSoundEvent` | `mcp_beep` OGG, category `master` | registered sound, copied `.ogg`, generated `sounds.json` |
+| `createBedrockResourcePack` / `createBedrockBehaviorPack` | `mcp_test_rp` / `mcp_test_bp`, v1.0.0 | created folders with `manifest.json` |
+| `buildBedrockProject` | `packName=mcp_test` | packaged `.mcpack` files for resource and behavior packs |
+| `compareElementVersions` | `TestItem`, current vs current | returned identical element JSON and empty diff |
+| `generateTestReport` | default `run/logs/latest.log` | parsed log and summarized errors/warnings |
+| `runServer` | via MCP tool | returned immediately; server log reached `Done (1.291s)!` |
+| `updateWorkspaceSettings` | `modid` and `modElementsPackage` | both fields updated (reflection for `modid`, setter for `modElementsPackage`) |
+
+## In-Game Verification (MCPTtest7)
+- `runClient()` launched Minecraft 1.21.1 with NeoForge 21.1.232 and loaded the mod classes.
+- `runServer()` (launched both manually and via MCP tool) reached `Done (1.291s)!`.
+- Server log confirmed the mod loaded; only expected recipe warnings were present from the test chain (non-existent `RubyIngot` and empty crafting slots mapped to `minecraft:air`).
 
 ## Build Artifacts
 - Plugin ZIP: `/home/ubuntu/repos/MCreatorMCP/build/libs/MCreatorMCP.zip`
-- Test mod JAR: `/home/ubuntu/MCreatorWorkspaces/MCPTtest8/build/libs/modid-1.0.jar`
+- Test mod JAR: `/home/ubuntu/MCreatorWorkspaces/MCPTtest7/build/libs/modid-1.0.jar`

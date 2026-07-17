@@ -27,12 +27,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.Base64;
 import java.util.*;
 import java.util.LinkedHashMap;
 import java.util.stream.Collectors;
+
+import javax.imageio.ImageIO;
 
 /**
  * Service that implements MCreator tools for the MCP server.
@@ -141,8 +145,12 @@ public class MCPToolsService {
         mcpServer.registerTool("importTexture", "Import a texture into the workspace",
                 objectSchema(props(
                         "textureName", stringSchema("Name for the texture"),
-                        "sourcePath", stringSchema("Source file path"),
-                        "textureType", stringSchema("Texture type: BLOCK, ITEM, ENTITY, etc.")
+                        "sourcePath", stringSchema("Source file path or base64 data URI"),
+                        "textureType", stringSchema("Texture type: BLOCK, ITEM, ENTITY, etc."),
+                        "width", stringSchema("Optional target width"),
+                        "height", stringSchema("Optional target height"),
+                        "animation", stringSchema("Generate .mcmeta animation file (true/false)"),
+                        "frameTime", stringSchema("Animation frame time in ticks")
                 ), "textureName", "sourcePath", "textureType"),
                 params -> importTexture(mcreator, params));
         mcpServer.registerTool("deleteTexture", "Delete a texture from the workspace",
@@ -232,6 +240,9 @@ public class MCPToolsService {
                 objectSchema(), params -> executeRunClient(mcreator));
         mcpServer.registerTool("runServer", "Start Minecraft server",
                 objectSchema(), params -> executeRunServer(mcreator));
+
+        // Advanced tools (events, workflows, Bedrock packs, test reporting)
+        new McpAdvancedToolsService(this, mcpServer, mcreator).registerTools();
 
         LOG.info("Registered {} MCreator tools", mcpServer.getToolCount());
     }
@@ -357,7 +368,7 @@ public class MCPToolsService {
     /**
      * Create element tool
      */
-    private McpTypes.ToolResult createElement(MCreator mcreator, Map<String, Object> params) {
+    McpTypes.ToolResult createElement(MCreator mcreator, Map<String, Object> params) {
         String elementType = (String) params.get("elementType");
         String elementName = (String) params.get("elementName");
         @SuppressWarnings("unchecked")
@@ -441,7 +452,7 @@ public class MCPToolsService {
      * generator and preview code do not fail on null fields. This is especially important
      * for texture holders, non-null strings, and numeric defaults.
      */
-    private void applyGeneratableElementDefaults(GeneratableElement generatableElement, Workspace workspace,
+    void applyGeneratableElementDefaults(GeneratableElement generatableElement, Workspace workspace,
             String elementName) {
         List<Field> fields = new ArrayList<>();
         Class<?> clazz = generatableElement.getClass();
@@ -640,7 +651,7 @@ public class MCPToolsService {
      * Creates a small placeholder texture PNG in the workspace if it does not yet exist
      * and returns the texture name (without extension) to use for model generation.
      */
-    private String createPlaceholderTexture(Workspace workspace, TextureType textureType, String name) {
+    String createPlaceholderTexture(Workspace workspace, TextureType textureType, String name) {
         try {
             File texturesFolder = workspace.getFolderManager().getTexturesFolder(textureType);
             if (texturesFolder == null) {
@@ -845,6 +856,20 @@ public class MCPToolsService {
             case "mcreatordependencies", "mcreator_dependencies" -> {
                 settings.setMCreatorDependencies(toStringSet(value));
                 return true;
+            }
+            case "modelementspackage", "mod_elements_package", "package" -> {
+                settings.setModElementsPackage(String.valueOf(value));
+                return true;
+            }
+            case "modid" -> {
+                try {
+                    java.lang.reflect.Field f = net.mcreator.workspace.settings.WorkspaceSettings.class.getDeclaredField("modid");
+                    f.setAccessible(true);
+                    f.set(settings, String.valueOf(value));
+                    return true;
+                } catch (Exception ex) {
+                    LOG.warn("Could not set modid: {}", ex.getMessage());
+                }
             }
             }
         } catch (Exception e) {
@@ -1128,8 +1153,8 @@ public class MCPToolsService {
                 return createErrorResult("No workspace loaded");
             }
 
-            // Execute run client on EDT
-            javax.swing.SwingUtilities.invokeAndWait(() -> {
+            // Execute run client on EDT without blocking the HTTP response
+            javax.swing.SwingUtilities.invokeLater(() -> {
                 mcreator.getActionRegistry().runClient.doAction();
             });
 
@@ -1152,8 +1177,8 @@ public class MCPToolsService {
                 return createErrorResult("No workspace loaded");
             }
 
-            // Execute run server on EDT
-            javax.swing.SwingUtilities.invokeAndWait(() -> {
+            // Execute run server on EDT without blocking the HTTP response
+            javax.swing.SwingUtilities.invokeLater(() -> {
                 mcreator.getActionRegistry().runServer.doAction();
             });
 
@@ -1180,7 +1205,7 @@ public class MCPToolsService {
     /**
      * Helper method to create success result
      */
-    private McpTypes.ToolResult createSuccessResult(String message) {
+    McpTypes.ToolResult createSuccessResult(String message) {
         List<McpTypes.ToolContent> content = List.of(
             new McpTypes.ToolContent("text", message)
         );
@@ -1190,7 +1215,7 @@ public class MCPToolsService {
     /**
      * Helper method to create error result
      */
-    private McpTypes.ToolResult createErrorResult(String message) {
+    McpTypes.ToolResult createErrorResult(String message) {
         List<McpTypes.ToolContent> content = List.of(
             new McpTypes.ToolContent("text", "Error: " + message)
         );
@@ -1202,19 +1227,24 @@ public class MCPToolsService {
     /**
      * Helper for per-type creation shortcuts. Injects the elementType parameter and delegates to createElement.
      */
-    private McpTypes.ToolResult createTypedElement(MCreator mcreator, String elementType, Map<String, Object> params) {
+    McpTypes.ToolResult createTypedElement(MCreator mcreator, String elementType, Map<String, Object> params) {
         Map<String, Object> copy = new HashMap<>(params != null ? params : Map.of());
         copy.put("elementType", elementType);
         return createElement(mcreator, copy);
     }
 
     /**
-     * Import a texture into the workspace from a source file path.
+     * Import a texture into the workspace. Supports file path, base64 data URI,
+     * optional resize, and .mcmeta animation generation.
      */
     private McpTypes.ToolResult importTexture(MCreator mcreator, Map<String, Object> params) {
         String textureName = (String) params.get("textureName");
         String sourcePath = (String) params.get("sourcePath");
         String textureTypeName = (String) params.get("textureType");
+        int width = toInt(params.get("width"), -1);
+        int height = toInt(params.get("height"), -1);
+        boolean animation = toBoolean(params.get("animation"), false);
+        int frameTime = toInt(params.get("frameTime"), 1);
 
         try {
             Workspace workspace = mcreator.getWorkspace();
@@ -1227,12 +1257,43 @@ public class MCPToolsService {
                 return createErrorResult("Unknown texture type: " + textureTypeName);
             }
 
-            File source = new File(sourcePath);
-            if (!source.exists()) return createErrorResult("Source file not found: " + sourcePath);
+            BufferedImage image = null;
+            if (sourcePath != null && sourcePath.startsWith("data:")) {
+                int comma = sourcePath.indexOf(',');
+                String base64 = comma > 0 ? sourcePath.substring(comma + 1) : sourcePath;
+                byte[] bytes = Base64.getDecoder().decode(base64);
+                try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes)) {
+                    image = ImageIO.read(bais);
+                }
+            } else if (sourcePath != null) {
+                File source = new File(sourcePath);
+                if (!source.exists()) return createErrorResult("Source file not found: " + sourcePath);
+                image = ImageIO.read(source);
+            }
+
+            if (image == null) return createErrorResult("Could not decode image from source");
+
+            int targetWidth = width > 0 ? width : image.getWidth();
+            int targetHeight = height > 0 ? height : image.getHeight();
+            if (targetWidth != image.getWidth() || targetHeight != image.getHeight()) {
+                BufferedImage scaled = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = scaled.createGraphics();
+                g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g.drawImage(image, 0, 0, targetWidth, targetHeight, null);
+                g.dispose();
+                image = scaled;
+            }
 
             File target = workspace.getFolderManager().getTextureFile(textureName.replaceAll("\\.png$", ""), textureType);
             target.getParentFile().mkdirs();
-            java.nio.file.Files.copy(source.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            ImageIO.write(image, "png", target);
+
+            if (animation) {
+                File mcmetaFile = new File(target.getParentFile(), textureName.replaceAll("\\.png$", "") + ".png.mcmeta");
+                String mcmetaJson = "{\"animation\":{\"frametime\":" + frameTime + "}}";
+                java.nio.file.Files.writeString(mcmetaFile.toPath(), mcmetaJson);
+            }
+
             return createSuccessResult("Texture imported to " + target.getAbsolutePath());
         } catch (Exception e) {
             LOG.error("Error importing texture", e);
@@ -1794,15 +1855,15 @@ public class MCPToolsService {
 
     // ---- JSON schema helpers ----
 
-    private Map<String, Object> objectSchema() {
+    Map<String, Object> objectSchema() {
         return Map.of("type", "object", "properties", Map.of());
     }
 
-    private Map<String, Object> objectSchema(Map<String, Object> properties) {
-        return Map.of("type", "object", "properties", properties);
+    Map<String, Object> objectSchema(Map<String, Object> properties) {
+        return Map.of("type", "object", "properties", properties != null ? properties : Map.of());
     }
 
-    private Map<String, Object> objectSchema(Map<String, Object> properties, String... required) {
+    Map<String, Object> objectSchema(Map<String, Object> properties, String... required) {
         Map<String, Object> schema = new HashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
@@ -1811,7 +1872,7 @@ public class MCPToolsService {
         return schema;
     }
 
-    private Map<String, Object> stringSchema(String description) {
+    Map<String, Object> stringSchema(String description) {
         return Map.of("type", "string", "description", description);
     }
 
@@ -1823,7 +1884,7 @@ public class MCPToolsService {
         return Map.of("type", "array", "description", description, "items", Map.of("type", itemType));
     }
 
-    private Map<String, Object> props(Object... keyValues) {
+    Map<String, Object> props(Object... keyValues) {
         Map<String, Object> map = new HashMap<>();
         for (int i = 0; i + 1 < keyValues.length; i += 2) {
             map.put((String) keyValues[i], keyValues[i + 1]);
@@ -1831,8 +1892,24 @@ public class MCPToolsService {
         return map;
     }
 
-    private String capitalize(String s) {
+    String capitalize(String s) {
         if (s == null || s.isEmpty()) return s;
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private static int toInt(Object value, int defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    private static boolean toBoolean(Object value, boolean defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Boolean b) return b;
+        return Boolean.parseBoolean(String.valueOf(value));
     }
 }

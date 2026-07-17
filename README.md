@@ -147,6 +147,30 @@ The MCP server now exposes **80+ tools** across workspace, element, asset, build
 - `runClient()` - Start the Minecraft client
 - `runServer()` - Start the Minecraft server
 
+### Procedures, Events & Workflows
+- `createProcedure(elementName, xml?)` - Create a reusable Blockly procedure
+- `getEventProcedures(elementName)` - List all event/procedure hooks on a mod element
+- `updateEventProcedure(elementName, eventType, procedureName?, xml?)` - Attach or update an event procedure
+- `registerEventListener(elementName, eventType, actionDefinition)` - Alias for `updateEventProcedure` using an action definition object
+- `createModWithTemplate(templateName, modName, modId, author?, version?, properties?)` - Create a complete mod from a template (`basic_item`, `ore_set`, `techmod_base`, `armor_set`, `full_biome`, `dimension_mod`)
+- `createTextureSet(setName, textureDefinitions, outputFormat?)` - Create multiple textures at once, optionally with `.mcmeta` animation files
+- `createRecipeChain(recipeName, recipes, outputFormat?)` - Create multiple linked recipes
+- `createModelFromDefinition(modelName, modelType, modelDefinition)` - Generate a JSON block/item model
+- `createSoundEvent(soundName, audioFile, category, subtitleKey?)` - Register a new sound event
+- `createParticleEffect(particleName, texture?, animationDef?, physics?)` - Create a particle effect
+- `updateElementProperties(elementName, properties)` - Update properties of an existing mod element
+
+### Bedrock Edition Support
+- `createBedrockTexturePack(packName, version, description)` - Create a Bedrock texture pack folder with `manifest.json`
+- `createBedrockResourcePack(packName, version, description, properties?)` - Create a Bedrock resource pack folder
+- `createBedrockBehaviorPack(packName, version, description, properties?)` - Create a Bedrock behavior pack folder
+- `createBedrockItem`, `createBedrockBlock`, `createBedrockEntity` - Bedrock element aliases (where supported by the generator)
+- `buildBedrockProject(packName?)` - Package resource and behavior packs into `.mcpack` files
+
+### Versioning & Test Reports
+- `compareElementVersions(elementName, version1?, version2?)` - Compare an element between workspace backups (`current`, `latest`, or backup name)
+- `generateTestReport(logPath?)` - Parse the latest client/server log and produce a summary of errors, warnings, missing textures, and recipe errors
+
 ## Resources
 
 ### Available Resources
@@ -388,7 +412,9 @@ curl -X POST http://localhost:<port>/mcp \
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+This fork and the modifications made to it are licensed under the **GNU General Public License v2.0 only (GPL-2.0-only)** - see the [LICENSE](LICENSE) file for details.
+
+The original MCreatorMCP code by Pylo was released under the MIT License; the original license notice is preserved in the [LICENSE](LICENSE) file for attribution.
 
 ## Links
 
