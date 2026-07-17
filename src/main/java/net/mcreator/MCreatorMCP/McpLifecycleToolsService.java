@@ -12,6 +12,8 @@ import net.mcreator.MCreatorMCP.mcp.McpElementPropertyApplier;
 import net.mcreator.MCreatorMCP.mcp.McpServer;
 import net.mcreator.MCreatorMCP.mcp.McpTypes;
 import net.mcreator.element.GeneratableElement;
+import net.mcreator.element.ModElementType;
+import net.mcreator.element.ModElementTypeLoader;
 import net.mcreator.element.types.LootTable;
 import net.mcreator.element.types.Recipe;
 import net.mcreator.ui.MCreator;
@@ -29,7 +31,11 @@ import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.net.HttpURLConnection;
 import java.net.Socket;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -39,6 +45,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -160,14 +168,59 @@ public class McpLifecycleToolsService {
 				), "elementNames", "folderPath"),
 				params -> moveElementsToFolder(params));
 
+		// Element export/import and bulk operations
+		mcpServer.registerTool("exportElement", "Export a mod element as JSON to a file",
+				host.objectSchema(host.props(
+						"elementName", host.stringSchema("Element name"),
+						"outputPath", host.stringSchema("Output JSON file path (optional)")
+				), "elementName"),
+				params -> exportElement(params));
+		mcpServer.registerTool("importElement", "Import a mod element from a JSON file",
+				host.objectSchema(host.props(
+						"inputPath", host.stringSchema("Input JSON file path"),
+						"newName", host.stringSchema("Optional new element name"),
+						"properties", host.objectPropSchema("Optional property overrides")
+				), "inputPath"),
+				params -> importElement(params));
+		mcpServer.registerTool("cloneElements", "Clone multiple mod elements",
+				host.objectSchema(host.props(
+						"mappings", host.objectPropSchema("Object mapping source element names to new names"),
+						"properties", host.objectPropSchema("Optional property overrides applied to all clones")
+				), "mappings"),
+				params -> cloneElements(params));
+		mcpServer.registerTool("renameElements", "Rename multiple mod elements",
+				host.objectSchema(host.props(
+						"mappings", host.objectPropSchema("Object mapping current names to new names")
+				), "mappings"),
+				params -> renameElements(params));
+		mcpServer.registerTool("deleteElements", "Delete multiple mod elements",
+				host.objectSchema(host.props(
+						"elementNames", host.objectPropSchema("List of element names to delete")
+				), "elementNames"),
+				params -> deleteElements(params));
+		mcpServer.registerTool("searchAndReplace", "Search and replace text across element properties and localizations",
+				host.objectSchema(host.props(
+						"search", host.stringSchema("Search string or regex"),
+						"replace", host.stringSchema("Replacement string"),
+						"elementNames", host.objectPropSchema("Optional list of element names to limit scope"),
+						"useRegex", host.stringSchema("Treat search as regex (true/false, default false)"),
+						"localizations", host.stringSchema("Also replace in localization entries (true/false, default false)")
+				), "search", "replace"),
+				params -> searchAndReplace(params));
+
 		// Prompt-driven texture generation
-		mcpServer.registerTool("generateTextureFromPrompt", "Generate a placeholder texture from a text prompt (draws prompt text and a color hash pattern)",
+		mcpServer.registerTool("generateTextureFromPrompt", "Generate a texture from a text prompt. Uses an external image URL if provided, otherwise a configured image-gen API, otherwise falls back to a placeholder.",
 				host.objectSchema(host.props(
 						"prompt", host.stringSchema("Text prompt describing the desired texture"),
 						"textureName", host.stringSchema("Output texture name"),
 						"textureType", host.stringSchema("Texture type: BLOCK, ITEM, ENTITY, etc."),
 						"width", host.stringSchema("Width in pixels (default 64)"),
-						"height", host.stringSchema("Height in pixels (default 64)")
+						"height", host.stringSchema("Height in pixels (default 64)"),
+						"imageUrl", host.stringSchema("Direct image URL to download instead of generating (optional)"),
+						"apiProvider", host.stringSchema("Image-gen API provider: url, pollinations, huggingface (default url/placeholder)"),
+						"apiKey", host.stringSchema("API key for the selected provider (optional; falls back to env vars)"),
+						"uvTemplatePath", host.stringSchema("Path to a UV template PNG to overlay/scale onto (optional)"),
+						"seed", host.stringSchema("Seed for deterministic generation (optional)")
 				), "prompt", "textureName", "textureType"),
 				params -> generateTextureFromPrompt(params));
 
@@ -212,6 +265,27 @@ public class McpLifecycleToolsService {
 						"timeoutSeconds", host.stringSchema("Server verification timeout (default: 180)")
 				)),
 				params -> runCIBuild(params));
+
+		// Build-system hooks
+		mcpServer.registerTool("addGradleDependency", "Add or update a Gradle dependency in build.gradle",
+				host.objectSchema(host.props(
+						"configuration", host.stringSchema("Gradle configuration, e.g. implementation or modCompileOnly"),
+						"dependency", host.stringSchema("Dependency string, e.g. com.example:lib:1.0"),
+						"mcreatorDependency", host.stringSchema("Set as MCreator API dependency as well (true/false, default false)")
+				), "configuration", "dependency"),
+				params -> addGradleDependency(params));
+		mcpServer.registerTool("editAccessTransformer", "Append or replace access transformer entries in src/main/resources/META-INF/accesstransformer.cfg",
+				host.objectSchema(host.props(
+						"entries", host.objectPropSchema("List of access transformer lines to add"),
+						"replace", host.stringSchema("Replace the entire file (true/false, default false)")
+				), "entries"),
+				params -> editAccessTransformer(params));
+		mcpServer.registerTool("editServerProperties", "Read or write server.properties for runServer",
+				host.objectSchema(host.props(
+						"properties", host.objectPropSchema("Map of server.properties keys to values"),
+						"replace", host.stringSchema("Replace the entire file (true/false, default false)")
+				)),
+				params -> editServerProperties(params));
 
 		// Workspace / session management
 		mcpServer.registerTool("exportWorkspace", "Export the current workspace to a shareable .zip file",
@@ -1491,10 +1565,316 @@ public class McpLifecycleToolsService {
 		}
 	}
 
+	private McpTypes.ToolResult exportElement(Map<String, Object> params) {
+		String elementName = stringParam(params, "elementName");
+		String outputPath = stringParam(params, "outputPath", "");
+		if (elementName == null) return host.createErrorResult("elementName is required");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			ModElement element = workspace.getModElementByName(elementName);
+			if (element == null) return host.createErrorResult("Element not found: " + elementName);
+			GeneratableElement ge = element.getGeneratableElement();
+			if (ge == null) return host.createErrorResult("Element has no generatable data: " + elementName);
+			String json = workspace.getModElementManager().generatableElementToJSON(ge);
+			File out = outputPath != null && !outputPath.isEmpty() ? new File(outputPath)
+					: new File(System.getProperty("java.io.tmpdir"), elementName + ".mcelement.json");
+			out.getParentFile().mkdirs();
+			Files.writeString(out.toPath(), json, StandardCharsets.UTF_8);
+			return host.createSuccessResult("Exported element '" + elementName + "' to " + out.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to export element: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult importElement(Map<String, Object> params) {
+		String inputPath = stringParam(params, "inputPath");
+		String newName = stringParam(params, "newName", null);
+		@SuppressWarnings("unchecked")
+		Map<String, Object> properties = (Map<String, Object>) params.get("properties");
+		if (inputPath == null) return host.createErrorResult("inputPath is required");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			File in = new File(inputPath);
+			if (!in.exists()) return host.createErrorResult("Input file not found: " + inputPath);
+			String json = Files.readString(in.toPath(), StandardCharsets.UTF_8);
+			JsonNode node = objectMapper.readTree(json);
+			String typeName = null;
+			if (properties != null && properties.containsKey("type")) {
+				typeName = String.valueOf(properties.get("type"));
+			} else if (node.has("_type") && !node.get("_type").isNull()) {
+				typeName = node.get("_type").asText();
+			}
+			// Fall back to reading the legacy type field present in some exported JSON
+			if (typeName == null && node.has("type") && !node.get("type").isNull())
+				typeName = node.get("type").asText();
+			if (typeName == null || typeName.isEmpty())
+				return host.createErrorResult("Cannot determine element type from JSON. Provide properties.type");
+			ModElementType<?> type = ModElementTypeLoader.getModElementType(typeName);
+			if (type == null) return host.createErrorResult("Unknown element type: " + typeName);
+			String importedName = newName != null && !newName.isEmpty() ? newName
+					: (node.has("name") && !node.get("name").isNull() ? node.get("name").asText() : in.getName().replaceAll("\\.mcelement\\.json$", ""));
+			if (workspace.getModElementByName(importedName) != null)
+				return host.createErrorResult("Element name already exists: " + importedName);
+			final String finalName = importedName;
+			final String finalTypeName = typeName;
+			AtomicReference<McpTypes.ToolResult> ref = new AtomicReference<>();
+			SwingUtilities.invokeAndWait(() -> {
+				try {
+					ModElementManager manager = workspace.getModElementManager();
+					ModElement me = new ModElement(workspace, finalName, type);
+					GeneratableElement ge = manager.fromJSONtoGeneratableElementOrNull(json, me);
+					if (ge == null) {
+						ref.set(host.createErrorResult("Could not deserialize element JSON as type " + finalTypeName));
+						return;
+					}
+					if (properties != null && !properties.isEmpty()) {
+						new McpElementPropertyApplier(workspace, finalTypeName, finalName).applyProperties(ge, properties);
+					}
+					manager.storeModElement(ge);
+					workspace.addModElement(me);
+					workspace.markDirty();
+					ref.set(host.createSuccessResult("Imported element '" + finalName + "' of type " + finalTypeName));
+				} catch (Exception e) {
+					ref.set(host.createErrorResult("Failed to import element: " + e.getMessage()));
+				}
+			});
+			return ref.get();
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to import element: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult cloneElements(Map<String, Object> params) {
+		@SuppressWarnings("unchecked")
+		Map<String, Object> mappings = (Map<String, Object>) params.get("mappings");
+		@SuppressWarnings("unchecked")
+		Map<String, Object> properties = (Map<String, Object>) params.get("properties");
+		if (mappings == null || mappings.isEmpty()) return host.createErrorResult("mappings is required");
+		List<String> errors = new ArrayList<>();
+		List<String> successes = new ArrayList<>();
+		for (Map.Entry<String, Object> e : mappings.entrySet()) {
+			String source = e.getKey();
+			String target = String.valueOf(e.getValue());
+			McpTypes.ToolResult r = cloneElement(new HashMap<>(Map.of("sourceElementName", source, "newElementName", target, "properties", properties != null ? properties : Map.of())));
+			if (Boolean.TRUE.equals(r.getIsError())) errors.add(source + " -> " + target + ": " + r.getContent().get(0).getText());
+			else successes.add(source + " -> " + target);
+		}
+		return host.createSuccessResult("Cloned " + successes.size() + " elements. Errors: " + errors);
+	}
+
+	private McpTypes.ToolResult renameElements(Map<String, Object> params) {
+		@SuppressWarnings("unchecked")
+		Map<String, Object> mappings = (Map<String, Object>) params.get("mappings");
+		if (mappings == null || mappings.isEmpty()) return host.createErrorResult("mappings is required");
+		List<String> errors = new ArrayList<>();
+		List<String> successes = new ArrayList<>();
+		for (Map.Entry<String, Object> e : mappings.entrySet()) {
+			String current = e.getKey();
+			String next = String.valueOf(e.getValue());
+			McpTypes.ToolResult r = renameElement(new HashMap<>(Map.of("elementName", current, "newName", next)));
+			if (Boolean.TRUE.equals(r.getIsError())) errors.add(current + " -> " + next + ": " + r.getContent().get(0).getText());
+			else successes.add(current + " -> " + next);
+		}
+		return host.createSuccessResult("Renamed " + successes.size() + " elements. Errors: " + errors);
+	}
+
+	private McpTypes.ToolResult deleteElements(Map<String, Object> params) {
+		Object namesObj = params.get("elementNames");
+		if (namesObj == null) return host.createErrorResult("elementNames is required");
+		List<String> names = new ArrayList<>();
+		if (namesObj instanceof List<?> list) {
+			for (Object o : list) names.add(String.valueOf(o));
+		} else if (namesObj instanceof String s) {
+			names.addAll(Arrays.asList(s.split("\\s*,\\s*")));
+		}
+		Workspace workspace = mcreator.getWorkspace();
+		if (workspace == null) return host.createErrorResult("No workspace loaded");
+		List<String> deleted = new ArrayList<>();
+		List<String> errors = new ArrayList<>();
+		for (String name : names) {
+			ModElement element = workspace.getModElementByName(name);
+			if (element == null) {
+				errors.add(name + ": not found");
+				continue;
+			}
+			try {
+				SwingUtilities.invokeAndWait(() -> {
+					workspace.getModElementManager().removeModElement(element);
+					workspace.removeModElement(element);
+					workspace.markDirty();
+				});
+				deleted.add(name);
+			} catch (Exception e) {
+				errors.add(name + ": " + e.getMessage());
+			}
+		}
+		return host.createSuccessResult("Deleted " + deleted.size() + " elements. Errors: " + errors);
+	}
+
+	private McpTypes.ToolResult searchAndReplace(Map<String, Object> params) {
+		String search = stringParam(params, "search");
+		String replace = stringParam(params, "replace");
+		if (search == null || replace == null) return host.createErrorResult("search and replace are required");
+		boolean useRegex = toBoolean(params.get("useRegex"), false);
+		boolean replaceLocs = toBoolean(params.get("localizations"), false);
+		Object namesObj = params.get("elementNames");
+		List<String> limit = new ArrayList<>();
+		if (namesObj instanceof List<?> list) for (Object o : list) limit.add(String.valueOf(o));
+		else if (namesObj instanceof String s) limit.addAll(Arrays.asList(s.split("\\s*,\\s*")));
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			Pattern pattern = useRegex ? Pattern.compile(search) : Pattern.compile(Pattern.quote(search), Pattern.LITERAL);
+			ModElementManager manager = workspace.getModElementManager();
+			List<String> changed = new ArrayList<>();
+			List<String> errors = new ArrayList<>();
+			for (ModElement me : workspace.getModElements()) {
+				if (!limit.isEmpty() && !limit.contains(me.getName())) continue;
+				GeneratableElement ge = me.getGeneratableElement();
+				if (ge == null) continue;
+				try {
+					String json = manager.generatableElementToJSON(ge);
+					String updated = useRegex ? pattern.matcher(json).replaceAll(replace) : json.replace(search, replace);
+					if (!updated.equals(json)) {
+						ModElement target = new ModElement(workspace, me.getName(), me.getType());
+						GeneratableElement newGe = manager.fromJSONtoGeneratableElementOrNull(updated, target);
+						if (newGe == null) {
+							errors.add(me.getName() + ": JSON deserialization failed after replace");
+							continue;
+						}
+						manager.storeModElement(newGe);
+						changed.add(me.getName());
+					}
+				} catch (Exception e) {
+					errors.add(me.getName() + ": " + e.getMessage());
+				}
+			}
+			if (replaceLocs) {
+				Map<String, LinkedHashMap<String, String>> map = (Map<String, LinkedHashMap<String, String>>) (Map<?, ?>) workspace.getLanguageMap();
+				for (Map.Entry<String, LinkedHashMap<String, String>> lang : map.entrySet()) {
+					List<String> keys = new ArrayList<>(lang.getValue().keySet());
+					for (String key : keys) {
+						String value = lang.getValue().get(key);
+						if (value == null) continue;
+						String newValue = useRegex ? pattern.matcher(value).replaceAll(replace) : value.replace(search, replace);
+						if (!newValue.equals(value)) lang.getValue().put(key, newValue);
+					}
+				}
+				workspace.markDirty();
+			}
+			return host.createSuccessResult("Updated elements: " + changed + ". Errors: " + errors);
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to search and replace: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult addGradleDependency(Map<String, Object> params) {
+		String configuration = stringParam(params, "configuration");
+		String dependency = stringParam(params, "dependency");
+		boolean mcreatorDep = toBoolean(params.get("mcreatorDependency"), false);
+		if (configuration == null || dependency == null)
+			return host.createErrorResult("configuration and dependency are required");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			File buildGradle = new File(workspace.getFolderManager().getWorkspaceFolder(), "build.gradle");
+			if (!buildGradle.exists()) return host.createErrorResult("build.gradle not found");
+			String content = Files.readString(buildGradle.toPath(), StandardCharsets.UTF_8);
+			String line = configuration + " \"" + dependency + "\"";
+			if (content.contains(line))
+				return host.createSuccessResult("Dependency already present: " + line);
+			// Insert before dependencies closing block or append
+			if (content.contains("dependencies {")) {
+				content = content.replaceFirst("(dependencies\\s*\\{)", "$1\n    " + line);
+			} else {
+				content += "\ndependencies {\n    " + line + "\n}\n";
+			}
+			Files.writeString(buildGradle.toPath(), content, StandardCharsets.UTF_8);
+			if (mcreatorDep) {
+				Set<String> deps = workspace.getWorkspaceSettings().getMCreatorDependenciesRaw();
+				if (deps == null) {
+					deps = new HashSet<>();
+					workspace.getWorkspaceSettings().setMCreatorDependencies(deps);
+				}
+				String depId = dependency.split(":")[0];
+				deps.add(depId);
+				workspace.markDirty();
+			}
+			return host.createSuccessResult("Added dependency: " + line);
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to add Gradle dependency: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult editAccessTransformer(Map<String, Object> params) {
+		Object entriesObj = params.get("entries");
+		boolean replace = toBoolean(params.get("replace"), false);
+		if (entriesObj == null) return host.createErrorResult("entries is required");
+		List<String> entries = new ArrayList<>();
+		if (entriesObj instanceof List<?> list) for (Object o : list) entries.add(String.valueOf(o));
+		else if (entriesObj instanceof String s) entries.addAll(Arrays.asList(s.split("\\r?\\n")));
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			File dir = new File(workspace.getFolderManager().getWorkspaceFolder(), "src/main/resources/META-INF");
+			File at = new File(dir, "accesstransformer.cfg");
+			dir.mkdirs();
+			Set<String> existing = new LinkedHashSet<>();
+			if (at.exists() && !replace) {
+				for (String line : Files.readAllLines(at.toPath(), StandardCharsets.UTF_8)) {
+					String t = line.trim();
+					if (!t.isEmpty() && !t.startsWith("#")) existing.add(t);
+				}
+			}
+			existing.addAll(entries);
+			Files.writeString(at.toPath(), existing.stream().collect(Collectors.joining("\n")), StandardCharsets.UTF_8);
+			return host.createSuccessResult("Wrote " + existing.size() + " access transformer entries to " + at.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to edit access transformer: " + e.getMessage());
+		}
+	}
+
+	private McpTypes.ToolResult editServerProperties(Map<String, Object> params) {
+		@SuppressWarnings("unchecked")
+		Map<String, Object> props = (Map<String, Object>) params.get("properties");
+		boolean replace = toBoolean(params.get("replace"), false);
+		if (props == null && !replace) return host.createErrorResult("properties is required");
+		try {
+			Workspace workspace = mcreator.getWorkspace();
+			if (workspace == null) return host.createErrorResult("No workspace loaded");
+			File serverProps = new File(workspace.getFolderManager().getWorkspaceFolder(), "run/server.properties");
+			serverProps.getParentFile().mkdirs();
+			Properties properties = new Properties();
+			if (serverProps.exists() && !replace) {
+				try (InputStream is = new FileInputStream(serverProps)) {
+					properties.load(is);
+				}
+			}
+			if (props != null) {
+				for (Map.Entry<String, Object> e : props.entrySet()) {
+					properties.setProperty(e.getKey(), String.valueOf(e.getValue()));
+				}
+			}
+			try (OutputStream os = new FileOutputStream(serverProps)) {
+				properties.store(os, "MCP generated server.properties");
+			}
+			return host.createSuccessResult("Wrote server.properties to " + serverProps.getAbsolutePath());
+		} catch (Exception e) {
+			return host.createErrorResult("Failed to edit server properties: " + e.getMessage());
+		}
+	}
+
 	private McpTypes.ToolResult generateTextureFromPrompt(Map<String, Object> params) {
 		String prompt = stringParam(params, "prompt");
 		String textureName = stringParam(params, "textureName");
 		String textureTypeName = stringParam(params, "textureType");
+		String imageUrl = stringParam(params, "imageUrl", "");
+		String apiProvider = stringParam(params, "apiProvider", "url");
+		String apiKey = stringParam(params, "apiKey", "");
+		String uvTemplatePath = stringParam(params, "uvTemplatePath", "");
+		String seed = stringParam(params, "seed", "");
 		if (prompt == null || textureName == null || textureTypeName == null)
 			return host.createErrorResult("prompt, textureName, and textureType are required");
 		try {
@@ -1509,39 +1889,136 @@ public class McpLifecycleToolsService {
 			int width = toInt(params.get("width"), 64);
 			int height = toInt(params.get("height"), 64);
 
-			BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-			int hash = prompt.hashCode();
-			Color bg = new Color((hash >> 16) & 0xFF, (hash >> 8) & 0xFF, hash & 0xFF);
-			Color fg = new Color(255 - bg.getRed(), 255 - bg.getGreen(), 255 - bg.getBlue());
-
-			Graphics2D g = image.createGraphics();
-			g.setColor(bg);
-			g.fillRect(0, 0, width, height);
-			g.setColor(fg);
-			for (int y = 0; y < height; y += 8) {
-				for (int x = 0; x < width; x += 8) {
-					if ((hash ^ (x * 31 + y)) % 7 == 0) g.fillRect(x, y, 4, 4);
-				}
-			}
-			g.setColor(fg);
-			String fontName = g.getFont().getName();
-			int fontSize = Math.max(8, Math.min(width, height) / 12);
-			g.setFont(new Font(fontName, Font.BOLD, fontSize));
-			String shortPrompt = prompt.length() > 40 ? prompt.substring(0, 37) + "..." : prompt;
-			g.drawString(shortPrompt, 4, height / 2);
-			g.dispose();
-
 			File textureFile = workspace.getFolderManager().getTextureFile(textureName.replaceAll("\\.png$", ""), textureType);
 			textureFile.getParentFile().mkdirs();
+
+			BufferedImage image = null;
+			String source = "fallback";
+			if (imageUrl != null && !imageUrl.isEmpty()) {
+				try {
+					image = ImageIO.read(new URI(imageUrl).toURL());
+					source = "imageUrl";
+				} catch (Exception e) {
+					return host.createErrorResult("Failed to download image from URL: " + e.getMessage());
+				}
+			} else if (!"url".equalsIgnoreCase(apiProvider)) {
+				BufferedImage apiImage = fetchImageFromApi(prompt, apiProvider, apiKey, width, height, seed);
+				if (apiImage != null) {
+					image = apiImage;
+					source = apiProvider;
+				}
+			}
+
+			if (image == null) {
+				image = generatePlaceholderTexture(prompt, width, height);
+			} else if (width > 0 && height > 0 && (image.getWidth() != width || image.getHeight() != height)) {
+				image = resizeAndPad(image, width, height);
+			}
+
+			if (uvTemplatePath != null && !uvTemplatePath.isEmpty()) {
+				File uvFile = new File(uvTemplatePath);
+				if (uvFile.exists()) {
+					BufferedImage uv = ImageIO.read(uvFile);
+					image = overlayUvTemplate(image, uv);
+					source += "+uv";
+				}
+			}
+
 			ImageIO.write(image, "png", textureFile);
 
 			File promptFile = new File(textureFile.getParentFile(), textureFile.getName().replace(".png", "") + ".prompt.txt");
-			Files.writeString(promptFile.toPath(), prompt, StandardCharsets.UTF_8);
+			Files.writeString(promptFile.toPath(), "source=" + source + "\nprompt=" + prompt, StandardCharsets.UTF_8);
 
-			return host.createSuccessResult("Generated placeholder texture from prompt at " + textureFile.getAbsolutePath());
+			return host.createSuccessResult("Generated texture (source=" + source + ") at " + textureFile.getAbsolutePath());
 		} catch (Exception e) {
 			return host.createErrorResult("Failed to generate texture from prompt: " + e.getMessage());
 		}
+	}
+
+	private BufferedImage fetchImageFromApi(String prompt, String provider, String apiKey, int width, int height, String seed) {
+		try {
+			if ("pollinations".equalsIgnoreCase(provider)) {
+				String encoded = URLEncoder.encode(prompt, StandardCharsets.UTF_8);
+				String seedParam = seed != null && !seed.isEmpty() ? "&seed=" + URLEncoder.encode(seed, StandardCharsets.UTF_8) : "";
+				String url = "https://image.pollinations.ai/prompt/" + encoded + "?width=" + width + "&height=" + height + "&nologo=true" + seedParam;
+				HttpURLConnection conn = (HttpURLConnection) new URI(url).toURL().openConnection();
+				conn.setRequestMethod("GET");
+				conn.setConnectTimeout(30000);
+				conn.setReadTimeout(120000);
+				if (conn.getResponseCode() == 200) {
+					return ImageIO.read(conn.getInputStream());
+				}
+			} else if ("huggingface".equalsIgnoreCase(provider)) {
+				if (apiKey == null || apiKey.isEmpty()) return null;
+				String model = "black-forest-labs/FLUX.1-schnell";
+				String body = objectMapper.writeValueAsString(Map.of("inputs", prompt));
+				HttpURLConnection conn = (HttpURLConnection) new URI("https://api-inference.huggingface.co/models/" + model).toURL().openConnection();
+				conn.setRequestMethod("POST");
+				conn.setDoOutput(true);
+				conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+				conn.setRequestProperty("Content-Type", "application/json");
+				conn.setConnectTimeout(30000);
+				conn.setReadTimeout(180000);
+				try (OutputStream os = conn.getOutputStream()) { os.write(body.getBytes(StandardCharsets.UTF_8)); }
+				if (conn.getResponseCode() == 200) return ImageIO.read(conn.getInputStream());
+			}
+		} catch (Exception e) {
+			LOG.warn("Image API fetch failed for provider {}: {}", provider, e.getMessage());
+		}
+		return null;
+	}
+
+	private BufferedImage generatePlaceholderTexture(String prompt, int width, int height) {
+		BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+		int hash = prompt.hashCode();
+		Color bg = new Color((hash >> 16) & 0xFF, (hash >> 8) & 0xFF, hash & 0xFF);
+		Color fg = new Color(255 - bg.getRed(), 255 - bg.getGreen(), 255 - bg.getBlue());
+
+		Graphics2D g = image.createGraphics();
+		g.setColor(bg);
+		g.fillRect(0, 0, width, height);
+		g.setColor(fg);
+		for (int y = 0; y < height; y += 8) {
+			for (int x = 0; x < width; x += 8) {
+				if ((hash ^ (x * 31 + y)) % 7 == 0) g.fillRect(x, y, 4, 4);
+			}
+		}
+		g.setColor(fg);
+		String fontName = g.getFont().getName();
+		int fontSize = Math.max(8, Math.min(width, height) / 12);
+		g.setFont(new Font(fontName, Font.BOLD, fontSize));
+		String shortPrompt = prompt.length() > 40 ? prompt.substring(0, 37) + "..." : prompt;
+		g.drawString(shortPrompt, 4, height / 2);
+		g.dispose();
+		return image;
+	}
+
+	private BufferedImage resizeAndPad(BufferedImage src, int width, int height) {
+		BufferedImage out = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = out.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+		g.setColor(Color.BLACK);
+		g.fillRect(0, 0, width, height);
+		double scale = Math.min((double) width / src.getWidth(), (double) height / src.getHeight());
+		int newW = (int) (src.getWidth() * scale);
+		int newH = (int) (src.getHeight() * scale);
+		int x = (width - newW) / 2;
+		int y = (height - newH) / 2;
+		g.drawImage(src, x, y, newW, newH, null);
+		g.dispose();
+		return out;
+	}
+
+	private BufferedImage overlayUvTemplate(BufferedImage image, BufferedImage uv) {
+		int w = image.getWidth();
+		int h = image.getHeight();
+		BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = out.createGraphics();
+		g.drawImage(image, 0, 0, null);
+		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
+		g.drawImage(uv.getScaledInstance(w, h, Image.SCALE_SMOOTH), 0, 0, null);
+		g.dispose();
+		return out;
 	}
 
 	private McpTypes.ToolResult verifyInWorld(Map<String, Object> params) {

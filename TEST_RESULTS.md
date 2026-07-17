@@ -10,7 +10,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - Health endpoint: `http://localhost:5175/health`
 
 ## Tool Count
-`tools/list` returned **164 tools** after the Phase 8 final expansion (`listProcedureTemplates`/`applyProcedureTemplate`, `createDatapackBiome`/`createDatapackDimension`/`createDatapackDimensionType`/`createDatapackCarver`/`createMcfunction`, `exportBedrockAddon`, `listElementFolders`/`createElementFolder`/`moveElementsToFolder`, `generateTextureFromPrompt`, and `verifyInWorld`).
+`tools/list` returned **178 tools** after Phase 9 (Phase 8 features plus `exportElement`/`importElement`, `cloneElements`/`renameElements`/`deleteElements`/`searchAndReplace`, `addGradleDependency`/`editAccessTransformer`/`editServerProperties`, real `generateTextureFromPrompt`, advanced mob AI, full Code element editing, and the expanded procedure-template library).
 
 ## Core Workspace Tools
 
@@ -284,3 +284,53 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 1. The test workspace still contains overlapping villager-profession POI blocks and a missing advancement item, which produce non-fatal server log errors.
 2. `verifyInWorld` with `includeClientScreenshot=true` depends on a headless virtual display and may not complete world loading in a GUI-less VM; the server-side place/break/inspect commands are the reliable verification path.
 3. `generateTextureFromPrompt` produces a placeholder image; for production-quality textures an external image-generation service or manually supplied texture is still needed.
+
+## Phase 9 Tests — Element Export/Import, Bulk Operations, Advanced Mob AI, Custom Java, Build Hooks, Real Texture Generation, Expanded Procedure Templates
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `exportElement` | `elementName=TestItem`, `outputPath=/tmp/testitem.mcelement.json` | exported `_fv`, `_type`, `definition` JSON; `_type` field used by import |
+| `importElement` | `inputPath=/tmp/testitem.mcelement.json`, `newName=ImportedItemTest` | created element `ImportedItemTest` from exported JSON |
+| `cloneElements` | `mappings={TestItem:ClonedItemTest}` | duplicated element; workspace consistent |
+| `renameElements` | `mappings={ClonedItemTest:RenamedItemTest}` | renamed element; references updated |
+| `deleteElements` | `elementNames=[ImportedItemTest,RenamedItemTest]` | deleted both elements |
+| `searchAndReplace` | `search=OldTestName`, `replace=NewTestName`, `localizations=true` | no matches in this workspace; tool executed |
+| `createAIBehavior` | `elementName=AIZombieMob`, `aiBase=Zombie`, `mobBehaviourType=Mob`, `mobCreatureType=MONSTER`, `health=20`, `attackStrength=5`, `attackKnockback=1.0`, `movementSpeed=0.25`, `followRange=32`, `texture=model_mob_texture`, `model=Default` | created hostile `LivingEntity` with AI settings |
+| `addAIGoal` | `elementName=ModelMob`, `aiBase=Skeleton`, `ranged=true`, `rangedAttackItem=minecraft:arrow`, `rangedAttackInterval=20`, `rangedAttackRadius=16` | updated existing mob to ranged Skeleton AI |
+| `createCustomJava` | `className=TestCustomCode`, `code=package net.mcptest7; public class TestCustomCode { ... }` | created `CustomElement` and wrote root-package Java file |
+| `editCustomJava` | `className=TestCustomCode`, `code=...` | overwrote the source file with `@EventBusSubscriber` stub |
+| `addMixinStub` | `className=TestMixin`, `targetClass=net.minecraft.world.entity.player.Player` | wrote Mixin stub under `mixin` subpackage |
+| `addGradleDependency` | `configuration=implementation`, `dependency=com.google.code.gson:gson:2.10.1` | inserted dependency into `build.gradle` |
+| `editAccessTransformer` | `entries=[public net.minecraft.world.level.block.Block f_49791_ # dropResources]` | wrote `META-INF/accesstransformer.cfg` |
+| `editServerProperties` | `properties={max-players:10, online-mode:false, spawn-monsters:true}` | wrote `run/server.properties` |
+| `generateTextureFromPrompt` (fallback) | `prompt='A blue sapphire ore block'`, `textureName=sapphire_prompt`, `textureType=BLOCK`, `width=32`, `height=32` | generated fallback PNG at `assets/mcptest7/textures/block/sapphire_prompt.png` |
+| `generateTextureFromPrompt` (Pollinations) | `prompt='pixel art red crystal ore block on dark stone'`, `textureName=crystal_pollinations`, `textureType=BLOCK`, `width=64`, `height=64`, `apiProvider=pollinations`, `seed=42` | generated real texture from Pollinations API |
+| `applyProcedureTemplate` (`if_then`) | `elementName=TestItem`, `eventType=onRightClickedInAir`, `values={condition:true, actionCommand:'say if fired'}` | created and linked procedure `TestItemOnRightClickedInAirIfThen` |
+| `applyProcedureTemplate` (`repeat`) | `elementName=TestBlock`, `eventType=onBlockAdded`, `values={times:3, command:'say loop'}` | created and linked procedure `TestBlockOnBlockAddedRepeat` |
+| `listProcedureTemplates` | no args | returned all 15 templates with default values |
+| `regenerateCode` / `buildForJavaEdition` | no args | regenerated 57+ elements; `./gradlew build` succeeded with new custom Java, Mixin, AI mob, and added dependency |
+| `verifyServerLoads` | no args | server reached `Done`; `errorCount:10` from pre-existing villager POI/advancement conflicts, no datapack errors from new JSON |
+
+### Phase 9 Fixes Verified
+- `McpLifecycleToolsService` registers `exportElement`, `importElement`, `cloneElements`, `renameElements`, `deleteElements`, `searchAndReplace`, `addGradleDependency`, `editAccessTransformer`, `editServerProperties`, and the updated `generateTextureFromPrompt`.
+- `exportElement` serializes a `GeneratableElement` through `ModElementManager.generatableElementToJSON`.
+- `importElement` derives the element type from `properties.type`, the `_type` JSON field, or the `type` field, then uses `ModElementManager.fromJSONtoGeneratableElementOrNull` and stores a new `ModElement`.
+- `cloneElements`/`renameElements`/`deleteElements` reuse the existing per-element lifecycle logic and collect per-element error messages.
+- `searchAndReplace` serializes each `GeneratableElement` to JSON, performs literal or regex replacement, deserializes back, and optionally updates localization strings in `workspace.getLanguageMap()`.
+- `addGradleDependency` inserts a quoted dependency line into `build.gradle` and optionally adds the group to MCreator API dependencies.
+- `editAccessTransformer` deduplicates and writes access-transformer lines.
+- `editServerProperties` reads or writes `run/server.properties`.
+- `generateTextureFromPrompt` tries `imageUrl` first, then `apiProvider=pollinations` (free `https://image.pollinations.ai/prompt/{prompt}`) or `huggingface` (`FLUX.1-schnell` with `Authorization: Bearer`), resizes the image to the requested dimensions, and optionally overlays a UV template at 50% alpha. If all sources fail it falls back to a deterministic placeholder.
+- `McpAdvancedToolsService` registers `createAIBehavior`, `addAIGoal`, `createCustomJava`, `editCustomJava`, `addMixinStub`, and expands `listProcedureTemplates`/`applyProcedureTemplate` with `if_then`, `if_else`, `repeat`, `set_variable`, `math_operation`, `message`, `kill_entity`, `explode`, and `play_sound`.
+- `createAIBehavior` and `addAIGoal` map string/int/bool parameters to `LivingEntity` fields (`aiBase`, `mobBehaviourType`, `mobCreatureType`, `health`, `attackStrength`, `attackKnockback`, `movementSpeed`, `followRange`, `ranged`, `rangedAttackItem`, etc.).
+- `createCustomJava` creates a `code` (`CustomElement`) mod element and writes/overwrites the root-package Java source; `packageSubPath` can be used for additional non-element utility classes.
+- `editCustomJava` searches the `src/main/java` tree for the class and overwrites it.
+- `addMixinStub` writes a Mixin class under `mixin` with `@Mixin(target)`, `@Inject`, and optional custom method body.
+
+### Tool Count
+`tools/list` returned **178 tools** after Phase 9.
+
+### Known Issues / Notes (Post-Phase 9)
+1. The test workspace still contains overlapping villager-profession POI blocks and a missing advancement item, which produce non-fatal server log errors; these are unchanged from previous phases.
+2. `generateTextureFromPrompt` can call external image APIs; Pollinations is used as the no-API-key default and HuggingFace FLUX.1-schnell is supported when an `apiKey` is provided.
+3. `verifyInWorld`/`verifyServerLoads` error counts may include stale `ERROR` lines from previous server runs; the `status` field and absence of datapack/registry errors are the reliable pass/fail signals.

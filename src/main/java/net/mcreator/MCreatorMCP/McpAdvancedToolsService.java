@@ -62,6 +62,23 @@ public class McpAdvancedToolsService {
                 Map.of("entity", "minecraft:cow")));
         map.put("apply_potion", new ProcedureTemplate("apply_potion", "Apply a potion effect to the entity",
                 Map.of("potion", "minecraft:regeneration", "level", "1", "duration", "60")));
+        map.put("if_then", new ProcedureTemplate("if_then", "If a condition is true then execute an action",
+                Map.of("condition", "true", "actionCommand", "say condition met")));
+        map.put("if_else", new ProcedureTemplate("if_else", "If a condition is true then do one action else another",
+                Map.of("condition", "true", "thenCommand", "say yes", "elseCommand", "say no")));
+        map.put("repeat", new ProcedureTemplate("repeat", "Repeat an action N times",
+                Map.of("times", "5", "command", "say repeat")));
+        map.put("set_variable", new ProcedureTemplate("set_variable", "Set a workspace variable to a value",
+                Map.of("variable", "myVar", "value", "1")));
+        map.put("math_operation", new ProcedureTemplate("math_operation", "Set a variable to a math operation of two numbers",
+                Map.of("variable", "result", "op", "ADD", "a", "5", "b", "3")));
+        map.put("message", new ProcedureTemplate("message", "Send a chat message",
+                Map.of("message", "Hello", "actbar", "false")));
+        map.put("kill_entity", new ProcedureTemplate("kill_entity", "Kill the event entity", Map.of()));
+        map.put("explode", new ProcedureTemplate("explode", "Create an explosion at the event position",
+                Map.of("power", "2")));
+        map.put("play_sound", new ProcedureTemplate("play_sound", "Play a sound at the event position",
+                Map.of("sound", "minecraft:entity.creeper.primed", "volume", "1", "pitch", "1")));
         PROCEDURE_TEMPLATES = Collections.unmodifiableMap(map);
     }
 
@@ -123,7 +140,7 @@ public class McpAdvancedToolsService {
                 params -> listProcedureTemplates(params));
         mcpServer.registerTool("applyProcedureTemplate", "Create a procedure from a named template and attach it to an element event",
                 host.objectSchema(host.props(
-                        "templateName", host.stringSchema("Template name (e.g. empty, give_item, send_message, execute_command, set_block, spawn_entity, apply_potion)"),
+                        "templateName", host.stringSchema("Template name (empty, give_item, send_message, message, execute_command, set_block, spawn_entity, apply_potion, if_then, if_else, repeat, set_variable, math_operation, kill_entity, explode, play_sound)"),
                         "elementName", host.stringSchema("Element name to attach to"),
                         "eventType", host.stringSchema("Event field name, e.g. onRightClicked"),
                         "procedureName", host.stringSchema("Optional custom procedure name"),
@@ -240,6 +257,62 @@ public class McpAdvancedToolsService {
                         "version2", host.stringSchema("Second version/backup name (or 'latest')")
                 ), "elementName"),
                 params -> compareElementVersions(params));
+
+        // Advanced mob AI and custom Java code
+        mcpServer.registerTool("createAIBehavior", "Create a LivingEntity element pre-configured with AI behavior",
+                host.objectSchema(host.props(
+                        "elementName", host.stringSchema("New mob element name"),
+                        "aiBase", host.stringSchema("AI base, e.g. Zombie, Skeleton, Spider, Creeper"),
+                        "mobBehaviourType", host.stringSchema("Creature/Mob/WaterCreature/Ambient"),
+                        "mobCreatureType", host.stringSchema("CREATURE/MONSTER/AMBIENT/WATER_CREATURE/UNDEFINED"),
+                        "health", host.stringSchema("Max health"),
+                        "attackStrength", host.stringSchema("Melee attack damage"),
+                        "attackKnockback", host.stringSchema("Attack knockback"),
+                        "movementSpeed", host.stringSchema("Movement speed"),
+                        "followRange", host.stringSchema("Follow range"),
+                        "ranged", host.stringSchema("Use ranged attacks (true/false)"),
+                        "rangedAttackItem", host.stringSchema("Ranged attack item, e.g. minecraft:arrow"),
+                        "rangedAttackInterval", host.stringSchema("Ticks between ranged attacks"),
+                        "rangedAttackRadius", host.stringSchema("Ranged attack radius"),
+                        "texture", host.stringSchema("Texture name"),
+                        "model", host.stringSchema("Model name, e.g. Default")
+                ), "elementName"),
+                params -> createAIBehavior(params));
+        mcpServer.registerTool("addAIGoal", "Update an existing LivingEntity's AI base, combat stats, and ranged settings",
+                host.objectSchema(host.props(
+                        "elementName", host.stringSchema("Existing mob element name"),
+                        "aiBase", host.stringSchema("AI base, e.g. Zombie, Skeleton, Spider"),
+                        "attackStrength", host.stringSchema("Melee attack damage"),
+                        "attackKnockback", host.stringSchema("Attack knockback"),
+                        "movementSpeed", host.stringSchema("Movement speed"),
+                        "followRange", host.stringSchema("Follow range"),
+                        "ranged", host.stringSchema("Use ranged attacks (true/false)"),
+                        "rangedAttackItem", host.stringSchema("Ranged attack item"),
+                        "rangedAttackInterval", host.stringSchema("Ticks between ranged attacks"),
+                        "rangedAttackRadius", host.stringSchema("Ranged attack radius")
+                ), "elementName"),
+                params -> addAIGoal(params));
+        mcpServer.registerTool("createCustomJava", "Create a custom Java class (CustomElement) and write its source file",
+                host.objectSchema(host.props(
+                        "className", host.stringSchema("Java class name"),
+                        "code", host.stringSchema("Full Java source code (optional; writes a stub if omitted)"),
+                        "isMixin", host.stringSchema("Create as a Mixin in the mixin subpackage (true/false, default false)"),
+                        "packageSubPath", host.stringSchema("Sub-package under the mod package, e.g. mixins or event")
+                ), "className"),
+                params -> createCustomJava(params));
+        mcpServer.registerTool("editCustomJava", "Edit an existing custom Java source file managed by a CustomElement",
+                host.objectSchema(host.props(
+                        "className", host.stringSchema("Java class name"),
+                        "code", host.stringSchema("Full Java source code")
+                ), "className", "code"),
+                params -> editCustomJava(params));
+        mcpServer.registerTool("addMixinStub", "Add a Mixin dependency line and generate a Mixin class stub",
+                host.objectSchema(host.props(
+                        "className", host.stringSchema("Mixin class name"),
+                        "targetClass", host.stringSchema("Fully-qualified target class"),
+                        "code", host.stringSchema("Optional method body source")
+                ), "className", "targetClass"),
+                params -> addMixinStub(params));
     }
 
     // ------------------------------------------------------------------
@@ -1027,6 +1100,211 @@ public class McpAdvancedToolsService {
     }
 
     // ------------------------------------------------------------------
+    // Advanced mob AI and custom Java code
+    // ------------------------------------------------------------------
+
+    private McpTypes.ToolResult createAIBehavior(Map<String, Object> params) {
+        String elementName = (String) params.get("elementName");
+        if (elementName == null) return host.createErrorResult("elementName is required");
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return host.createErrorResult("No workspace loaded");
+            if (workspace.getModElementByName(elementName) != null)
+                return host.createErrorResult("Element already exists: " + elementName);
+
+            Map<String, Object> props = buildAIProperties(params);
+            props.put("mobName", elementName);
+            if (!props.containsKey("mobModelName")) props.put("mobModelName", "Default");
+            if (!props.containsKey("mobModelTexture")) props.put("mobModelTexture", elementName.toLowerCase(Locale.ROOT) + "_texture");
+            if (!props.containsKey("hasAI")) props.put("hasAI", true);
+
+            Map<String, Object> createParams = new HashMap<>();
+            createParams.put("elementName", elementName);
+            createParams.put("properties", props);
+            return host.createTypedElement(mcreator, "livingentity", createParams);
+        } catch (Exception e) {
+            LOG.error("Error creating AI behavior", e);
+            return host.createErrorResult("Failed to create AI behavior: " + e.getMessage());
+        }
+    }
+
+    private McpTypes.ToolResult addAIGoal(Map<String, Object> params) {
+        String elementName = (String) params.get("elementName");
+        if (elementName == null) return host.createErrorResult("elementName is required");
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return host.createErrorResult("No workspace loaded");
+            ModElement me = workspace.getModElementByName(elementName);
+            if (me == null) return host.createErrorResult("Element not found: " + elementName);
+            if (!(me.getGeneratableElement() instanceof net.mcreator.element.types.LivingEntity))
+                return host.createErrorResult("Element is not a LivingEntity");
+
+            Map<String, Object> props = buildAIProperties(params);
+            Map<String, Object> updateParams = new HashMap<>();
+            updateParams.put("elementName", elementName);
+            updateParams.put("properties", props);
+            return updateElementProperties(updateParams);
+        } catch (Exception e) {
+            LOG.error("Error adding AI goal", e);
+            return host.createErrorResult("Failed to add AI goal: " + e.getMessage());
+        }
+    }
+
+    private Map<String, Object> buildAIProperties(Map<String, Object> params) {
+        Map<String, Object> props = new HashMap<>();
+        putIfPresent(props, params, "aiBase");
+        putIfPresent(props, params, "mobBehaviourType");
+        putIfPresent(props, params, "mobCreatureType");
+        putIfPresent(props, params, "health");
+        putIfPresent(props, params, "attackStrength");
+        putIfPresent(props, params, "attackKnockback");
+        putIfPresent(props, params, "movementSpeed");
+        putIfPresent(props, params, "followRange");
+        putIfPresent(props, params, "ranged");
+        putIfPresent(props, params, "rangedAttackItem");
+        putIfPresent(props, params, "rangedAttackInterval");
+        putIfPresent(props, params, "rangedAttackRadius");
+        putIfPresent(props, params, "texture", "mobModelTexture");
+        putIfPresent(props, params, "model", "mobModelName");
+        return props;
+    }
+
+    private void putIfPresent(Map<String, Object> target, Map<String, Object> source, String key) {
+        if (source.containsKey(key) && source.get(key) != null) target.put(key, source.get(key));
+    }
+
+    private void putIfPresent(Map<String, Object> target, Map<String, Object> source, String sourceKey, String targetKey) {
+        if (source.containsKey(sourceKey) && source.get(sourceKey) != null) target.put(targetKey, source.get(sourceKey));
+    }
+
+    private McpTypes.ToolResult createCustomJava(Map<String, Object> params) {
+        String className = (String) params.get("className");
+        String code = (String) params.get("code");
+        boolean isMixin = toBoolean(params.get("isMixin"), false);
+        String packageSubPath = (String) params.get("packageSubPath");
+        if (className == null) return host.createErrorResult("className is required");
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return host.createErrorResult("No workspace loaded");
+
+            boolean useRoot = packageSubPath == null || packageSubPath.isEmpty();
+            if (useRoot && workspace.getModElementByName(className) != null)
+                return host.createErrorResult("CustomElement already exists: " + className);
+
+            File srcFile = resolveCustomJavaFile(workspace, className, isMixin, packageSubPath);
+            srcFile.getParentFile().mkdirs();
+            String source = code != null && !code.isEmpty() ? code : buildCustomJavaStub(workspace, className, useRoot);
+            Files.writeString(srcFile.toPath(), source, StandardCharsets.UTF_8);
+
+            // Only register a CustomElement for the root-package source file
+            if (useRoot) {
+                Map<String, Object> createParams = new HashMap<>();
+                createParams.put("elementName", className);
+                createParams.put("properties", Map.of());
+                McpTypes.ToolResult r = host.createTypedElement(mcreator, "code", createParams);
+                if (Boolean.TRUE.equals(r.getIsError())) return r;
+                // Overwrite the template MCreator generated with our source
+                Files.writeString(srcFile.toPath(), source, StandardCharsets.UTF_8);
+            }
+
+            return host.createSuccessResult("Created custom Java class " + className + " at " + srcFile.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error creating custom Java class", e);
+            return host.createErrorResult("Failed to create custom Java class: " + e.getMessage());
+        }
+    }
+
+    private McpTypes.ToolResult editCustomJava(Map<String, Object> params) {
+        String className = (String) params.get("className");
+        String code = (String) params.get("code");
+        if (className == null || code == null) return host.createErrorResult("className and code are required");
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return host.createErrorResult("No workspace loaded");
+            File srcFile = findCustomJavaFile(workspace, className);
+            if (srcFile == null) return host.createErrorResult("Custom Java file not found for " + className);
+            Files.writeString(srcFile.toPath(), code, StandardCharsets.UTF_8);
+            return host.createSuccessResult("Updated custom Java class " + className + " at " + srcFile.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error editing custom Java", e);
+            return host.createErrorResult("Failed to edit custom Java: " + e.getMessage());
+        }
+    }
+
+    private McpTypes.ToolResult addMixinStub(Map<String, Object> params) {
+        String className = (String) params.get("className");
+        String targetClass = (String) params.get("targetClass");
+        String code = (String) params.get("code");
+        if (className == null || targetClass == null) return host.createErrorResult("className and targetClass are required");
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return host.createErrorResult("No workspace loaded");
+            File mixinDir = new File(workspace.getFolderManager().getWorkspaceFolder(), "src/main/java/" + workspace.getWorkspaceSettings().getModElementsPackage().replace('.', '/') + "/mixin");
+            mixinDir.mkdirs();
+            File mixinFile = new File(mixinDir, className + ".java");
+            String body = code != null ? code : "";
+            String stub = "package " + workspace.getWorkspaceSettings().getModElementsPackage() + ".mixin;\n\n"
+                    + "import org.spongepowered.asm.mixin.Mixin;\n"
+                    + "import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;\n"
+                    + "import org.spongepowered.asm.mixin.injection.At;\n"
+                    + "import org.spongepowered.asm.mixin.injection.Inject;\n\n"
+                    + "@Mixin(" + targetClass + ".class)\n"
+                    + "public class " + className + " {\n"
+                    + body
+                    + "}\n";
+            Files.writeString(mixinFile.toPath(), stub, StandardCharsets.UTF_8);
+            return host.createSuccessResult("Wrote Mixin stub to " + mixinFile.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error adding mixin stub", e);
+            return host.createErrorResult("Failed to add mixin stub: " + e.getMessage());
+        }
+    }
+
+    private File resolveCustomJavaFile(Workspace workspace, String className, boolean isMixin, String packageSubPath) {
+        String basePackage = workspace.getWorkspaceSettings().getModElementsPackage();
+        String sub = packageSubPath != null ? packageSubPath : "";
+        String pkg = sub.isEmpty() ? basePackage : basePackage + "." + sub;
+        File dir = new File(workspace.getFolderManager().getWorkspaceFolder(), "src/main/java/" + pkg.replace('.', '/'));
+        dir.mkdirs();
+        return new File(dir, className + ".java");
+    }
+
+    private File findCustomJavaFile(Workspace workspace, String className) {
+        File root = new File(workspace.getFolderManager().getWorkspaceFolder(), "src/main/java");
+        File[] candidates = new File[0];
+        if (root.isDirectory()) {
+            try {
+                candidates = java.nio.file.Files.walk(root.toPath())
+                        .filter(p -> p.getFileName().toString().equals(className + ".java"))
+                        .map(p -> p.toFile())
+                        .toArray(File[]::new);
+            } catch (Exception ignored) {
+            }
+        }
+        return candidates.length > 0 ? candidates[0] : null;
+    }
+
+    private String buildCustomJavaStub(Workspace workspace, String className, boolean useRoot) {
+        String pkg = workspace.getWorkspaceSettings().getModElementsPackage();
+        return "package " + pkg + ";\n\n"
+                + "import net.neoforged.neoforge.event.server.ServerStartingEvent;\n"
+                + "import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;\n"
+                + "import net.neoforged.fml.common.EventBusSubscriber;\n"
+                + "import net.neoforged.bus.api.SubscribeEvent;\n\n"
+                + "@EventBusSubscriber\n"
+                + "public class " + className + " {\n"
+                + "    public " + className + "() {\n    }\n\n"
+                + "    @SubscribeEvent\n"
+                + "    public static void init(FMLCommonSetupEvent event) {\n"
+                + "        new " + className + "();\n"
+                + "    }\n\n"
+                + "    @SubscribeEvent\n"
+                + "    public static void serverLoad(ServerStartingEvent event) {\n"
+                + "    }\n"
+                + "}\n";
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
@@ -1470,6 +1748,56 @@ public class McpAdvancedToolsService {
             body.append(valueXml("duration", "math_number", "<field name=\"NUM\">" + duration + "</field>"));
             body.append(valueXml("entity", "entity_from_deps", ""));
             body.append("<field name=\"potion\">").append(potion).append("</field>");
+        }
+        case "message" -> {
+            blockType = "entity_send_chat";
+            body.append(valueXml("text", "text", "<field name=\"TEXT\">" + message + "</field>"));
+            body.append(valueXml("actbar", "logic_boolean", "<field name=\"BOOL\">" + actbar.toUpperCase(Locale.ROOT) + "</field>"));
+            body.append(valueXml("entity", "entity_from_deps", ""));
+        }
+        case "if_then" -> {
+            String condition = defaults.getOrDefault("condition", "true");
+            String actionCommand = escapeXml(defaults.getOrDefault("actionCommand", "say condition met"));
+            String condBool = "true".equalsIgnoreCase(condition) ? "TRUE" : "FALSE";
+            return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"controls_if\"><value name=\"IF0\"><block type=\"logic_boolean\"><field name=\"BOOL\">" + condBool + "</field></block></value><statement name=\"DO0\"><block type=\"execute_command\">" + valueXml("command", "text", "<field name=\"TEXT\">" + actionCommand + "</field>") + valueXml("x", "coord_x", "") + valueXml("y", "coord_y", "") + valueXml("z", "coord_z", "") + "</block></statement></block></next></block></xml>";
+        }
+        case "if_else" -> {
+            String condition = defaults.getOrDefault("condition", "true");
+            String thenCommand = escapeXml(defaults.getOrDefault("thenCommand", "say yes"));
+            String elseCommand = escapeXml(defaults.getOrDefault("elseCommand", "say no"));
+            String condBool = "true".equalsIgnoreCase(condition) ? "TRUE" : "FALSE";
+            return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"controls_if\"><mutation else=\"1\"></mutation><value name=\"IF0\"><block type=\"logic_boolean\"><field name=\"BOOL\">" + condBool + "</field></block></value><statement name=\"DO0\"><block type=\"execute_command\">" + valueXml("command", "text", "<field name=\"TEXT\">" + thenCommand + "</field>") + valueXml("x", "coord_x", "") + valueXml("y", "coord_y", "") + valueXml("z", "coord_z", "") + "</block></statement><statement name=\"ELSE\"><block type=\"execute_command\">" + valueXml("command", "text", "<field name=\"TEXT\">" + elseCommand + "</field>") + valueXml("x", "coord_x", "") + valueXml("y", "coord_y", "") + valueXml("z", "coord_z", "") + "</block></statement></block></next></block></xml>";
+        }
+        case "repeat" -> {
+            String times = escapeXml(defaults.getOrDefault("times", "5"));
+            String repeatCommand = escapeXml(defaults.getOrDefault("command", "say repeat"));
+            return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"controls_repeat_ext\"><value name=\"TIMES\"><block type=\"math_number\"><field name=\"NUM\">" + times + "</field></block></value><statement name=\"DO\"><block type=\"execute_command\">" + valueXml("command", "text", "<field name=\"TEXT\">" + repeatCommand + "</field>") + valueXml("x", "coord_x", "") + valueXml("y", "coord_y", "") + valueXml("z", "coord_z", "") + "</block></statement></block></next></block></xml>";
+        }
+        case "set_variable" -> {
+            String variable = escapeXml(defaults.getOrDefault("variable", "myVar"));
+            String value = escapeXml(defaults.getOrDefault("value", "1"));
+            return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"variables_set\"><field name=\"VAR\">" + variable + "</field>" + valueXml("VALUE", "math_number", "<field name=\"NUM\">" + value + "</field>") + "</block></next></block></xml>";
+        }
+        case "math_operation" -> {
+            String variable = escapeXml(defaults.getOrDefault("variable", "result"));
+            String op = escapeXml(defaults.getOrDefault("op", "ADD"));
+            String a = escapeXml(defaults.getOrDefault("a", "5"));
+            String b = escapeXml(defaults.getOrDefault("b", "3"));
+            return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"variables_set\"><field name=\"VAR\">" + variable + "</field>" + valueXml("VALUE", "math_arithmetic", "<field name=\"OP\">" + op + "</field>" + valueXml("A", "math_number", "<field name=\"NUM\">" + a + "</field>") + valueXml("B", "math_number", "<field name=\"NUM\">" + b + "</field>")) + "</block></next></block></xml>";
+        }
+        case "kill_entity" -> {
+            return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"execute_command\">" + valueXml("command", "text", "<field name=\"TEXT\">execute as @s run kill</field>") + valueXml("x", "coord_x", "") + valueXml("y", "coord_y", "") + valueXml("z", "coord_z", "") + "</block></next></block></xml>";
+        }
+        case "explode" -> {
+            String power = escapeXml(defaults.getOrDefault("power", "2"));
+            return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"execute_command\">" + valueXml("command", "text", "<field name=\"TEXT\">execute at @s run summon minecraft:tnt ~ ~ ~</field>") + valueXml("x", "coord_x", "") + valueXml("y", "coord_y", "") + valueXml("z", "coord_z", "") + "</block></next></block></xml>";
+        }
+        case "play_sound" -> {
+            String sound = escapeXml(defaults.getOrDefault("sound", "minecraft:entity.creeper.primed"));
+            String volume = escapeXml(defaults.getOrDefault("volume", "1"));
+            String pitch = escapeXml(defaults.getOrDefault("pitch", "1"));
+            String cmd = "execute at @s run playsound " + sound + " master @s ~ ~ ~ " + volume + " " + pitch;
+            return "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"event_trigger\" deletable=\"false\" x=\"40\" y=\"40\"><field name=\"trigger\">no_ext_trigger</field><next><block type=\"execute_command\">" + valueXml("command", "text", "<field name=\"TEXT\">" + cmd + "</field>") + valueXml("x", "coord_x", "") + valueXml("y", "coord_y", "") + valueXml("z", "coord_z", "") + "</block></next></block></xml>";
         }
         default -> {
             return PROCEDURE_XML_BASE;

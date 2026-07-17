@@ -97,7 +97,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **164 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, procedure templates, lifecycle, folders, fine-grained editing, texture/model processing, prompt-driven texture generation, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, and build-error diagnostics. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **178 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, procedure templates, lifecycle, folders, fine-grained editing, texture/model processing, prompt-driven texture generation, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, build-error diagnostics, element JSON export/import, bulk element operations, advanced mob AI, full Code element editing, and build-system hooks. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
@@ -165,7 +165,7 @@ The MCP server now exposes **164 tools** across workspace, element, asset, build
 ### Procedures, Events & Workflows
 - `createProcedure(elementName, xml?)` - Create a reusable Blockly procedure
 - `createProcedureAndAttach(procedureName, elementName, eventType, xml?)` - Create a procedure and immediately attach it to an element event in one call
-- `listProcedureTemplates()` - List available procedure templates (`empty`, `give_item`, `send_message`, `execute_command`, `set_block`, `spawn_entity`, `apply_potion`)
+- `listProcedureTemplates()` - List available procedure templates (`empty`, `give_item`, `send_message`, `execute_command`, `set_block`, `spawn_entity`, `apply_potion`, `if_then`, `if_else`, `repeat`, `set_variable`, `math_operation`, `message`, `kill_entity`, `explode`, `play_sound`)
 - `applyProcedureTemplate(templateName, elementName, eventType, procedureName?, values?)` - Create a procedure from a named template and attach it to an element event
 - `getEventProcedures(elementName)` - List all event/procedure hooks on a mod element
 - `updateEventProcedure(elementName, eventType, procedureName?, xml?)` - Attach or update an event procedure
@@ -225,7 +225,7 @@ The MCP server now exposes **164 tools** across workspace, element, asset, build
 ### Texture/Model Pipeline & In-Game Verification
 - `processTexture(textureName, textureType, operations)` - Resize, pad, and recolor workspace textures
 - `generateMcmeta(textureName, textureType, frameTime?, interpolate?, frames?)` - Create `.mcmeta` animation metadata
-- `generateTextureFromPrompt(prompt, textureName, textureType, width?, height?)` - Generate a placeholder texture from a text prompt (draws a color-hash pattern and the prompt text)
+- `generateTextureFromPrompt(prompt, textureName, textureType, width?, height?, imageUrl?, apiProvider?, apiKey?, uvTemplatePath?, seed?)` - Generate textures from a direct `imageUrl`, Pollinations, HuggingFace, or a fallback placeholder
 - `convertBlockbenchModel(sourcePath, modelName)` - Convert a Blockbench JSON model into a workspace model
 - `executeServerCommand(command, rconHost?, rconPort?, rconPassword?)` - Send an RCON command to a running server
 - `runTestScenario(scenarioName, commands, rconPassword?, rconPort?, timeoutSeconds?)` - Start a server, run commands, and return a log summary
@@ -236,6 +236,29 @@ The MCP server now exposes **164 tools** across workspace, element, asset, build
 ### CI / Automation
 - `runCIBuild(timeoutSeconds?)` - Regenerate code, build the JAR, start the server, and run a smoke-test command
 - `exportModrinth(outputPath, summary?)` - Package the built JAR into a Modrinth `.mrpack`
+
+### Element Export/Import, Bulk Operations & Build Hooks
+- `exportElement(elementName, outputPath?)` - Export a mod element's JSON to a file
+- `importElement(inputPath, newName?, properties?)` - Import a mod element from a JSON file (uses `_type`/`type`/`properties.type` and workspace `fromJSONtoGeneratableElementOrNull`)
+- `cloneElements(mappings, properties?)` - Clone multiple elements in one call
+- `renameElements(mappings)` - Rename multiple elements in one call
+- `deleteElements(elementNames)` - Delete multiple elements in one call
+- `searchAndReplace(search, replace, elementNames?, useRegex?, localizations?)` - Search/replace across element JSON and optionally localization entries
+- `addGradleDependency(configuration, dependency, mcreatorDependency?)` - Add a Gradle dependency to `build.gradle`
+- `editAccessTransformer(entries, replace?)` - Manage `META-INF/accesstransformer.cfg`
+- `editServerProperties(properties, replace?)` - Read or write `run/server.properties`
+
+### Advanced Mob AI, Code Elements & Real Asset Generation
+- `createAIBehavior(...)` - Create a `LivingEntity` with AI base, behavior/creature type, combat stats, and ranged settings
+- `addAIGoal(elementName, ...)` - Update an existing mob's AI base, attack, and ranged settings
+- `createCustomJava(className, code?, packageSubPath?)` - Create a `CustomElement`/Java class in the mod package
+- `editCustomJava(className, code)` - Overwrite an existing custom Java source file
+- `addMixinStub(className, targetClass, code?)` - Write a Mixin stub under the `mixin` subpackage
+- `generateTextureFromPrompt(prompt, textureName, textureType, width?, height?, imageUrl?, apiProvider?, apiKey?, uvTemplatePath?, seed?)` - Generate textures from an `imageUrl`, Pollinations, HuggingFace, or a fallback placeholder
+
+### Expanded Procedure Template Library
+- `listProcedureTemplates()` - List templates
+- `applyProcedureTemplate(templateName, elementName, eventType, procedureName?, values?)` - Create and attach a procedure from templates including `empty`, `give_item`, `send_message`, `execute_command`, `set_block`, `spawn_entity`, `apply_potion`, `if_then`, `if_else`, `repeat`, `set_variable`, `math_operation`, `message`, `kill_entity`, `explode`, `play_sound`
 
 ### Model Validation & Conversion
 - `validateModel(sourcePath)` - Validate a `.json` or `.obj` model file
