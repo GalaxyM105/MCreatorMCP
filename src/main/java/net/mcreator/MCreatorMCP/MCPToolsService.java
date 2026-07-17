@@ -258,6 +258,9 @@ public class MCPToolsService {
         // Lifecycle, asset pipeline, and CI/automation tools
         new McpLifecycleToolsService(this, mcpServer, mcreator).registerTools();
 
+        // Publishing, log streaming, datapack/Bedrock file helpers, and client verification
+        new McpPublishingAndVerificationService(this, mcpServer, mcreator).registerTools();
+
         LOG.info("Registered {} MCreator tools", mcpServer.getToolCount());
     }
 
@@ -803,8 +806,9 @@ public class MCPToolsService {
             }
 
             if (generatableElement instanceof ArmorTrim trim) {
-                if (trim.item == null)
-                    trim.item = new MItemBlock(workspace, "");
+                if (trim.item == null || trim.item.getUnmappedValue() == null
+                        || trim.item.getUnmappedValue().isEmpty())
+                    trim.item = new MItemBlock(workspace, "Items.IRON_INGOT");
                 if (trim.name == null)
                     trim.name = elementName.toLowerCase(Locale.ROOT);
                 if (trim.armorTextureFile == null)
@@ -829,6 +833,8 @@ public class MCPToolsService {
                     overlay.components = new ArrayList<>();
                 if (overlay.baseTexture == null)
                     overlay.baseTexture = "";
+                if (overlay.priority == null)
+                    overlay.priority = "NORMAL";
                 if (overlay.overlayTarget == null)
                     overlay.overlayTarget = new ScreenEntry(workspace, "Ingame");
                 if (overlay.displayCondition == null)
@@ -848,6 +854,10 @@ public class MCPToolsService {
                     gui.onTick = new Procedure(null);
                 if (gui.onClosed == null)
                     gui.onClosed = new Procedure(null);
+                if (gui.width == 0)
+                    gui.width = 176;
+                if (gui.height == 0)
+                    gui.height = 166;
             }
 
             if (generatableElement instanceof SpecialEntity special) {

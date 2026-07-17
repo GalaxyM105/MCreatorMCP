@@ -10,7 +10,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - Health endpoint: `http://localhost:5175/health`
 
 ## Tool Count
-`tools/list` returned **131 tools** after the Phase 4 lifecycle/asset/CI expansion (workspace/element/asset/variable/build/export/validation + per-type `create<TYPE>` shortcuts + procedure/event/workflow tools + Bedrock pack tools + versioning/test-report tools + lifecycle helpers + fine-grained editing + texture/model pipeline + in-game verification + CI automation).
+`tools/list` returned **139 tools** after the Phase 5 publishing/verification/datapack/Bedrock/GUI expansion (workspace/element/asset/variable/build/export/validation + per-type `create<TYPE>` shortcuts + procedure/event/workflow tools + Bedrock pack tools + versioning/test-report tools + lifecycle helpers + fine-grained editing + texture/model pipeline + in-game verification + publishing + datapack-only worldgen + log streaming + CI automation).
 
 ## Core Workspace Tools
 
@@ -179,3 +179,31 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 1. The test workspace contains multiple villager professions that all point to `minecraft:crafting_table`, so the server logs `Skipping villager profession ... POI block already in use` and related tag/advancement errors. These are test-data conflicts, not code defects.
 2. `runClient` still reports a single OpenAL `SoundSystem` error in the headless VM; this is environmental and expected.
 3. `executeServerCommand` requires an already-running server (use `runServer` or `runTestScenario` first).
+
+## Phase 5 Tests — GUI/Overlay/Code/Bedrock/Datapack/Publishing/Client Verification
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `createGui` / `createOverlay` / `createGamerule` / `createItemextension` / `createArmortrim` / `createCode` | minimal properties | created and generated code; server loaded without FreeMarker/NullPointer errors |
+| `createDatapackFeature` | `featureName="Ruby Ore Cluster"`, `featureType="ore"`, `target="minecraft:stone_ore_replaceables"`, `state="minecraft:redstone_ore"`, `count=6` | wrote `configured_feature/ruby_ore_cluster.json` and `placed_feature/ruby_ore_cluster.json`; server loaded without datapack registry errors |
+| `createBedrockBehaviorJson` | `packName=mcp_bedrock`, `elementType=item`, `elementName=test_item` | wrote valid Bedrock behavior pack JSON under the workspace |
+| `getLatestLog` | `lines=20` | returned the latest server `latest.log` tail |
+| `getGradleLog` | `lines=50` | returned the Gradle runserver/build log tail |
+| `getBuildProgress` | `maxChars=4000` | returned `READY`/console tail after build completed |
+| `publishToModrinth` | dummy token | reached Modrinth API and returned `401 unauthorized` (HTTP code captured in output) |
+| `publishToCurseForge` | dummy token | reached CurseForge API and returned `404 Not Found` (HTTP code captured in output) |
+| `verifyClientInGame` | `timeoutSeconds=120`, `outputPath=/tmp/mcp_screenshot2.png` | launched Minecraft client under Xvfb, captured a PNG of the main menu |
+| `runTestScenario` | `summon minecraft:cow`, `say Final in-game verification passed` | server started, RCON connected, entity spawned, message broadcasted |
+
+### Phase 5 Fixes Verified
+- `McpPublishingAndVerificationService` registers `getLatestLog`, `getGradleLog`, `getBuildProgress`, `publishToModrinth`, `publishToCurseForge`, `createDatapackFeature`, `createBedrockBehaviorJson`, and `verifyClientInGame`.
+- `McpElementPropertyApplier` and `MCPToolsService` now alias and default `gui`, `overlay`, `gamerule`, `itemextension`, `armortrim`, and `code`/`customelement` so their generated code compiles and loads.
+- `createDatapackFeature` sanitizes file names to lowercase/underscore, outputs a string `feature` reference, and adds the required `discard_chance_on_air_exposure` field for `minecraft:ore` configs.
+- `publishToModrinth` sends the required `dependencies`/`featured`/`file_parts` fields and appends the HTTP response code to the tool output.
+- `verifyClientInGame` uses a virtual display, waits for the title screen, and captures the in-game screenshot via `import`/xdotool.
+
+### Known Issues / Notes (Post-Phase 5)
+1. `executeServerCommand` still requires an RCON-enabled server; starting a server with `runServer()` does not enable RCON, so use `runTestScenario()` for automated command chains.
+2. `publishToModrinth`/`publishToCurseForge` are end-to-end wired but return 401/404 when using dummy credentials; a real API token/project ID is required for actual uploads.
+3. The test workspace still contains overlapping villager-profession POI blocks and an advancement with a missing item, which produce non-fatal server log errors.
+4. Multi-workspace/no-workspace mode and safe generator migration are not exposed as tools because MCreator's active `MCreator` instance is bound to a single workspace window; these remain documented limitations.

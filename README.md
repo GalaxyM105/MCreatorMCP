@@ -97,7 +97,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **131 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, lifecycle, fine-grained editing, texture/model processing, in-game verification, and CI automation categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **139 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, lifecycle, fine-grained editing, texture/model processing, in-game verification, publishing, datapack/Bedrock helpers, log streaming, and CI automation categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
@@ -117,7 +117,7 @@ The MCP server now exposes **131 tools** across workspace, element, asset, build
 
 ### Generic & Typed Element Creation
 - `createElement(elementType, elementName, properties?)` - Create any mod element with a rich JSON property object
-- `createItem`, `createBlock`, `createTool`, `createArmor`, `createFood`, `createEnchantment`, `createPotion`, `createLivingEntity`, `createRecipe`, `createParticle`, `createFluid`, `createBiome`, `createDimension`, `createAchievement`, `createLootTable`, `createFunction`, `createCommand`, `createFeature`, `createStructure`, `createPlant`, `createProjectile`, `createVillagerProfession`, `createVillagerTrade`, `createPotionEffect`, `createAttribute`, `createKeyBinding`, `createDamageType`, `createPainting`, `createBannerPattern`, ... — one shortcut per registered `ModElementType`
+- `createItem`, `createBlock`, `createTool`, `createArmor`, `createFood`, `createEnchantment`, `createPotion`, `createLivingEntity`, `createRecipe`, `createParticle`, `createFluid`, `createBiome`, `createDimension`, `createAchievement`, `createLootTable`, `createFunction`, `createCommand`, `createFeature`, `createStructure`, `createPlant`, `createProjectile`, `createVillagerProfession`, `createVillagerTrade`, `createPotionEffect`, `createAttribute`, `createKeyBinding`, `createDamageType`, `createPainting`, `createBannerPattern`, `createGui`, `createOverlay`, `createGamerule`, `createItemextension`, `createArmortrim`, `createCode`, ... — one shortcut per registered `ModElementType`
 - `createBedrockItem`, `createBedrockBlock`, `createBedrockEntity` — Bedrock Edition aliases (where the generator supports them)
 - `registerLootTable`, `registerAdvancement`, `registerFunction` — data-pack style helpers
 
@@ -147,6 +147,11 @@ The MCP server now exposes **131 tools** across workspace, element, asset, build
 - `runClient()` - Start the Minecraft client
 - `runServer()` - Start the Minecraft server
 
+### Log Streaming & Build Progress
+- `getLatestLog(lines?, logName?)` - Tail `run/logs/latest.log` or `debug.log`
+- `getGradleLog(lines?)` - Tail the Gradle runserver/build log
+- `getBuildProgress(maxChars?)` - Return the current Gradle console status (`READY`/`RUNNING`/`ERROR`) and the tail of its output
+
 ### Procedures, Events & Workflows
 - `createProcedure(elementName, xml?)` - Create a reusable Blockly procedure
 - `getEventProcedures(elementName)` - List all event/procedure hooks on a mod element
@@ -164,8 +169,16 @@ The MCP server now exposes **131 tools** across workspace, element, asset, build
 - `createBedrockTexturePack(packName, version, description)` - Create a Bedrock texture pack folder with `manifest.json`
 - `createBedrockResourcePack(packName, version, description, properties?)` - Create a Bedrock resource pack folder
 - `createBedrockBehaviorPack(packName, version, description, properties?)` - Create a Bedrock behavior pack folder
+- `createBedrockBehaviorJson(packName, elementType, elementName, properties?)` - Write a Bedrock behavior pack JSON definition for an item/block/entity
 - `createBedrockItem`, `createBedrockBlock`, `createBedrockEntity` - Bedrock element aliases (where supported by the generator)
 - `buildBedrockProject(packName?)` - Package resource and behavior packs into `.mcpack` files
+
+### Datapack-Only Worldgen
+- `createDatapackFeature(featureName, featureType?, target?, state?, count?)` - Write a vanilla datapack `configured_feature` + `placed_feature` JSON pair directly into the workspace data folder
+
+### Publishing
+- `publishToModrinth(apiToken, projectId, versionNumber, changelog?, loaders?, gameVersions?, releaseType?, filePath?)` - Publish the built JAR to Modrinth
+- `publishToCurseForge(apiToken, projectId, displayName, changelog?, releaseType?, gameVersionIds?, filePath?)` - Publish the built JAR to CurseForge
 
 ### Versioning & Test Reports
 - `compareElementVersions(elementName, version1?, version2?)` - Compare an element between workspace backups (`current`, `latest`, or backup name)
@@ -191,6 +204,7 @@ The MCP server now exposes **131 tools** across workspace, element, asset, build
 - `convertBlockbenchModel(sourcePath, modelName)` - Convert a Blockbench JSON model into a workspace model
 - `executeServerCommand(command, rconHost?, rconPort?, rconPassword?)` - Send an RCON command to a running server
 - `runTestScenario(scenarioName, commands, rconPassword?, rconPort?, timeoutSeconds?)` - Start a server, run commands, and return a log summary
+- `verifyClientInGame(timeoutSeconds?, outputPath?, commands?)` - Launch the Minecraft client in a virtual display and capture a screenshot of the main menu
 - `generateTestReport(logPath?)` - Parse a client/server log and return errors/warnings
 
 ### CI / Automation

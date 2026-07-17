@@ -127,6 +127,38 @@ public class McpElementPropertyApplier {
 		villagerProfessionAliases.put("sound", "actionSound");
 		ALIASES.put("villagerprofession", villagerProfessionAliases);
 
+		Map<String, String> armorTrimAliases = new HashMap<>();
+		armorTrimAliases.put("texture", "armorTextureFile");
+		armorTrimAliases.put("trimTexture", "armorTextureFile");
+		ALIASES.put("armortrim", armorTrimAliases);
+
+		Map<String, String> itemExtensionAliases = new HashMap<>();
+		itemExtensionAliases.put("targetItem", "item");
+		itemExtensionAliases.put("target", "item");
+		ALIASES.put("itemextension", itemExtensionAliases);
+
+		Map<String, String> gameRuleAliases = new HashMap<>();
+		gameRuleAliases.put("name", "displayName");
+		gameRuleAliases.put("ruleType", "type");
+		gameRuleAliases.put("defaultValue", "defaultValueLogic");
+		ALIASES.put("gamerule", gameRuleAliases);
+
+		Map<String, String> overlayAliases = new HashMap<>();
+		overlayAliases.put("texture", "baseTexture");
+		overlayAliases.put("target", "overlayTarget");
+		overlayAliases.put("condition", "displayCondition");
+		ALIASES.put("overlay", overlayAliases);
+
+		Map<String, String> guiAliases = new HashMap<>();
+		guiAliases.put("inventoryX", "inventoryOffsetX");
+		guiAliases.put("inventoryY", "inventoryOffsetY");
+		guiAliases.put("pauseGame", "doesPauseGame");
+		ALIASES.put("gui", guiAliases);
+
+		// CustomElement has no GeneratableElement fields; it uses the element name for custom code templates
+		ALIASES.put("code", Map.of());
+		ALIASES.put("customelement", Map.of());
+
 		BLOCK_RENDER_TYPES.put("solid", 10);
 		BLOCK_RENDER_TYPES.put("cutout", 11);
 		BLOCK_RENDER_TYPES.put("translucent", 12);
@@ -502,8 +534,9 @@ public class McpElementPropertyApplier {
 		}
 
 		if (ge instanceof ArmorTrim trim) {
-			if (trim.item == null)
-				trim.item = new MItemBlock(workspace, "");
+			if (trim.item == null || trim.item.getUnmappedValue() == null
+					|| trim.item.getUnmappedValue().isEmpty())
+				trim.item = new MItemBlock(workspace, "Items.IRON_INGOT");
 			if (trim.name == null)
 				trim.name = elementName.toLowerCase(Locale.ROOT);
 			if (trim.armorTextureFile == null)
