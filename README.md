@@ -97,30 +97,55 @@ MCreatorMCP/
 
 ## Available Tools
 
+The MCP server now exposes **80+ tools** across workspace, element, asset, build, localization, and validation categories. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
 - `getWorkspaceInfo()` - Get detailed workspace information
+- `getWorkspaceSettings()` - Get all workspace settings
+- `updateWorkspaceSettings(settings)` - Update workspace settings
 - `regenerateCode()` - Regenerate code without building
 
-### Element Operations
+### Element Discovery & Search
 - `listModElements(elementType?)` - List mod elements with optional filtering
-- `openElement(elementName)` - Open element in MCreator UI
-- `createElement(elementType, elementName)` - Create new mod element
+- `listModElementTypes()` - List all available element types
+- `getElementProperties(elementName)` - Get all properties of a mod element as JSON
+- `searchElements(query)` - Search mod elements by name or type
 - `deleteElement(elementName)` - Delete mod element
+- `validateElement(elementName)` - Validate a mod element
+- `validateWorkspace()` - Validate the entire workspace
 
-### Testing & Execution
-- `runClient()` - Start Minecraft client
-- `runServer()` - Start Minecraft server
+### Generic & Typed Element Creation
+- `createElement(elementType, elementName, properties?)` - Create any mod element with a rich JSON property object
+- `createItem`, `createBlock`, `createTool`, `createArmor`, `createFood`, `createEnchantment`, `createPotion`, `createLivingEntity`, `createRecipe`, `createParticle`, `createFluid`, `createBiome`, `createDimension`, `createAchievement`, `createLootTable`, `createFunction`, ... — one shortcut per registered `ModElementType`
+- `createBedrockItem`, `createBedrockBlock`, `createBedrockEntity` — Bedrock Edition aliases (where the generator supports them)
+- `registerLootTable`, `registerAdvancement`, `registerFunction` — data-pack style helpers
 
-### Resource Management
-- `listTextures()` - List texture files
-- `listSounds()` - List sound files
-- `listStructures()` - List structure files
+### Texture & Asset Management
+- `listTexturesByType(type?)` - List textures, optionally filtered by type
+- `importTexture(textureName, sourcePath, textureType)` - Import a PNG texture
+- `deleteTexture(textureName, textureType)` - Delete a texture
+- `listModels()` - List custom models
+- `importModel(modelName, sourcePath)` - Import a model (Java JSON/OBJ)
+- `deleteModel(modelName)` - Delete a model
+- `getAssetMetadata(assetName, assetType)` - Get asset metadata
 
-### Variables & Localization
-- `listVariables()` - List workspace variables
-- `createVariable(name, type, scope)` - Create new variable
-- `getLocalizations(language?)` - Get localization entries
+### Workspace Variables & Localization
+- `listWorkspaceVariables()` - List all workspace variables
+- `createVariable(variableName, variableType, scope, defaultValue?)` - Create a variable
+- `updateVariable(variableName, variableType?, scope?, defaultValue?)` - Update a variable
+- `deleteVariable(variableName)` - Delete a variable
+- `getLocalizations(language?)` - Get localization strings
+- `setLocalization(key, language, value)` - Set a localization string
+- `addLanguage(languageCode)` - Add a new language
+
+### Build, Export, Deploy & Testing
+- `buildForJavaEdition(includeClient?, includeServer?)` - Build Java Edition mod and return JAR path
+- `exportResourcePack(outputPath)` - Copy built resources to a folder
+- `exportBehaviorPack(outputPath)` - Copy built data resources to a folder
+- `deployToGameFolder(editionType, gameFolderPath)` - Copy the built JAR to a `mods` folder
+- `runClient()` - Start the Minecraft client
+- `runServer()` - Start the Minecraft server
 
 ## Resources
 
@@ -128,6 +153,167 @@ MCreatorMCP/
 - `workspace://overview` - Complete workspace overview with metadata
 - `workspace://elements` - All mod elements with properties and details
 - `workspace://structure` - Project directory structure and organization
+
+## Element Property Reference
+
+`createElement` and the typed `create*` shortcuts accept an optional `properties` object. Property keys are matched to `GeneratableElement` fields (with aliases for common names). The following are commonly used keys for major Java Edition element types.
+
+### Common properties
+| Key | Type | Description |
+|-----|------|-------------|
+| `name` | string | Display/localized name |
+| `texture` | string / object | Main texture name or `{all: "name", top: "...", side: "...", item: "..."}` |
+| `creativeTabs` | array of strings | Creative tab entries |
+| `rarity` | string | `COMMON`, `UNCOMMON`, `RARE`, `EPIC` |
+
+### Item properties
+| Key | Type | Description |
+|-----|------|-------------|
+| `stackSize` | int | Max stack size (1-64) |
+| `isFood` | bool | Is edible |
+| `nutritionalValue` / `foodHealAmount` | int | Food hunger restored |
+| `saturation` / `foodSaturation` | float | Food saturation |
+| `enchantability` | int | Enchantability |
+| `immuneToFire` / `fireResistant` | bool | Is fireproof |
+| `isBurnable` | bool | Burns in furnace |
+| `creativeTabs` | array | Creative tab names |
+
+### Block properties
+| Key | Type | Description |
+|-----|------|-------------|
+| `hardness` | float | Mining hardness (-1 for unbreakable) |
+| `resistance` | float | Blast resistance |
+| `luminance` | int | Light level 0-15 |
+| `slipperiness` | float | Friction (0.6 default, 0.98 for ice) |
+| `soundOnStep` / `soundType` | string | `STONE`, `WOOD`, `METAL`, `GRAVEL`, etc. |
+| `toolForHarvest` / `toolClass` | string | `Pickaxe`, `Axe`, `Shovel`, `Hoe` |
+| `harvestLevel` / `toolLevel` | int | 0=hand, 1=wood, 2=stone, 3=iron, 4=diamond |
+| `isFlammable` | bool | Can catch fire |
+| `flammability` | int | Burn chance |
+| `fireSpreadSpeed` | int | Fire spread speed |
+| `drops` | string / object | `{item: "minecraft:diamond", count: 1}` |
+| `hasTransparency` | bool | Whether the block is translucent |
+| `renderType` | int/string | `10`/`solid`, `12`/`cutout`, `translucent` |
+
+### Tool / Armor / Food
+| Key | Type | Description |
+|-----|------|-------------|
+| `material` / `armorMaterial` | string | `WOOD`, `STONE`, `IRON`, `DIAMOND`, `GOLD`, `NETHERITE` |
+| `attackDamage` / `damageModifier` | float | Attack damage |
+| `attackSpeed` | float | Attack speed |
+| `efficiency` | float | Mining speed |
+| `repairItems` | array of strings | Items that repair the tool/armor |
+| `armorValues` | int[4] | Helmet, body, leggings, boots protection values |
+| `armorDurability` / `maxDamage` | int/array | Durability per piece |
+| `knockbackResistance` | float | Knockback resistance |
+
+### Recipe properties
+| Key | Type | Description |
+|-----|------|-------------|
+| `recipeType` | string | `Crafting`, `Smelting`, `Blasting`, `Smoking`, `Campfire cooking`, `Stone cutting`, `Smithing`, `Brewing` |
+| `inputs` | array | Ingredients (item names, tags, or maps) |
+| `output` | string/map | Result item or `{item: "...", count: N}` |
+| `experience` | float | XP for smelting recipes |
+| `cookingTime` / `cookTime` | int | Ticks to cook |
+
+### Fluid, Biome, Dimension, Mob, etc.
+The property applier maps JSON keys to every `GeneratableElement` field by reflection, so you can pass any documented MCreator field name. Use `getElementProperties(elementName)` to inspect the exact JSON structure of an existing element.
+
+## Example JSON Payloads
+
+### Create a customized item
+```json
+{
+  "name": "createItem",
+  "arguments": {
+    "elementName": "Ruby",
+    "properties": {
+      "name": "Ruby",
+      "stackSize": 64,
+      "rarity": "RARE",
+      "creativeTabs": ["MATERIALS"],
+      "isFood": false
+    }
+  }
+}
+```
+
+### Create a block with drops
+```json
+{
+  "name": "createBlock",
+  "arguments": {
+    "elementName": "SapphireOre",
+    "properties": {
+      "name": "Sapphire Ore",
+      "texture": "sapphire",
+      "hardness": 3,
+      "resistance": 3,
+      "toolForHarvest": "Pickaxe",
+      "harvestLevel": 2,
+      "drops": { "item": "minecraft:diamond", "count": 1 },
+      "creativeTabs": ["BUILDING_BLOCKS"]
+    }
+  }
+}
+```
+
+### Create a crafting recipe
+```json
+{
+  "name": "createRecipe",
+  "arguments": {
+    "elementName": "RubyFromCoal",
+    "properties": {
+      "recipeType": "Crafting",
+      "inputs": ["minecraft:coal", "minecraft:coal", "minecraft:coal", "minecraft:coal"],
+      "output": { "item": "Ruby", "count": 1 }
+    }
+  }
+}
+```
+
+### Create a tool
+```json
+{
+  "name": "createTool",
+  "arguments": {
+    "elementName": "SapphirePickaxe",
+    "properties": {
+      "name": "Sapphire Pickaxe",
+      "texture": "iron_tool",
+      "toolType": "Pickaxe",
+      "material": "DIAMOND",
+      "efficiency": 8,
+      "attackDamage": 5,
+      "enchantability": 15,
+      "repairItems": ["minecraft:iron_ingot"]
+    }
+  }
+}
+```
+
+### Update workspace settings
+```json
+{
+  "name": "updateWorkspaceSettings",
+  "arguments": {
+    "settings": {
+      "modName": "My MCP Mod",
+      "version": "1.0.0",
+      "author": "AI Agent"
+    }
+  }
+}
+```
+
+### Build and deploy
+```json
+{
+  "name": "buildForJavaEdition",
+  "arguments": { "includeClient": true, "includeServer": true }
+}
+```
 
 ## Configuration
 

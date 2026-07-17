@@ -1,12 +1,15 @@
 package net.mcreator.MCreatorMCP;
 
+import net.mcreator.MCreatorMCP.mcp.McpElementPropertyApplier;
 import net.mcreator.MCreatorMCP.mcp.McpServer;
 import net.mcreator.MCreatorMCP.mcp.McpTypes;
 import net.mcreator.element.GeneratableElement;
 import net.mcreator.element.ModElementType;
 import net.mcreator.element.ModElementTypeLoader;
 import net.mcreator.element.parts.TextureHolder;
+import net.mcreator.element.types.Achievement;
 import net.mcreator.element.types.Block;
+import net.mcreator.element.types.Fluid;
 import net.mcreator.element.types.interfaces.LimitedOptions;
 import net.mcreator.element.types.interfaces.Numeric;
 import net.mcreator.element.util.GEValidator;
@@ -28,6 +31,7 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.LinkedHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -45,21 +49,191 @@ public class MCPToolsService {
     public void registerTools(McpServer mcpServer, MCreator mcreator) {
         LOG.info("Registering MCreator tools with MCP server");
 
-        // Workspace management tools
-        mcpServer.registerHandler("buildWorkspace", params -> executeBuildWorkspace(mcreator));
-        mcpServer.registerHandler("getWorkspaceInfo", params -> getWorkspaceInfo(mcreator));
-        mcpServer.registerHandler("regenerateCode", params -> executeRegenerateCode(mcreator));
+        // Workspace management
+        mcpServer.registerTool("buildWorkspace", "Build the current MCreator workspace",
+                objectSchema(), params -> executeBuildWorkspace(mcreator));
+        mcpServer.registerTool("getWorkspaceInfo", "Get detailed workspace information",
+                objectSchema(), params -> getWorkspaceInfo(mcreator));
+        mcpServer.registerTool("getWorkspaceSettings", "Get all workspace settings",
+                objectSchema(), params -> getWorkspaceSettings(mcreator));
+        mcpServer.registerTool("updateWorkspaceSettings", "Update workspace settings",
+                objectSchema(props("settings", objectPropSchema("Map of setting names to values")), "settings"),
+                params -> updateWorkspaceSettings(mcreator, params));
+        mcpServer.registerTool("regenerateCode", "Regenerate code without building",
+                objectSchema(), params -> executeRegenerateCode(mcreator));
 
-        // Element operations
-        mcpServer.registerHandler("listModElements", params -> listModElements(mcreator, params));
-        mcpServer.registerHandler("createElement", params -> createElement(mcreator, params));
-        mcpServer.registerHandler("deleteElement", params -> deleteElement(mcreator, params));
+        // Element discovery
+        mcpServer.registerTool("listModElements", "List mod elements with optional filtering",
+                objectSchema(props("elementType", stringSchema("Filter by element type")),
+                        "elementType"),
+                params -> listModElements(mcreator, params));
+        mcpServer.registerTool("listModElementTypes", "List all available element types",
+                objectSchema(), params -> listModElementTypes(mcreator));
+        mcpServer.registerTool("getElementProperties", "Get all properties of a mod element as JSON",
+                objectSchema(props("elementName", stringSchema("Name of the element")), "elementName"),
+                params -> getElementProperties(mcreator, params));
+        mcpServer.registerTool("searchElements", "Search mod elements by name or type",
+                objectSchema(props("query", stringSchema("Search string")), "query"),
+                params -> searchElements(mcreator, params));
+        mcpServer.registerTool("deleteElement", "Delete mod element",
+                objectSchema(props("elementName", stringSchema("Name of element to delete")), "elementName"),
+                params -> deleteElement(mcreator, params));
+        mcpServer.registerTool("validateElement", "Validate a mod element for missing textures or references",
+                objectSchema(props("elementName", stringSchema("Name of element to validate")), "elementName"),
+                params -> validateElement(mcreator, params));
+        mcpServer.registerTool("validateWorkspace", "Validate the entire workspace",
+                objectSchema(), params -> validateWorkspace(mcreator));
 
-        // Testing tools
-        mcpServer.registerHandler("runClient", params -> executeRunClient(mcreator));
-        mcpServer.registerHandler("runServer", params -> executeRunServer(mcreator));
+        // Generic element creation
+        mcpServer.registerTool("createElement", "Create a customized mod element",
+                objectSchema(props(
+                        "elementType", stringSchema("Type of element to create"),
+                        "elementName", stringSchema("Name of the new element"),
+                        "properties", objectPropSchema("Element-specific customization properties")
+                ), "elementType", "elementName"),
+                params -> createElement(mcreator, params));
 
-        LOG.info("Registered {} MCreator tools", 8);
+        // Per-type creation shortcuts
+        for (ModElementType type : ModElementTypeLoader.getAllModElementTypes()) {
+            String typeName = type.getRegistryName();
+            String toolName = "create" + capitalize(typeName);
+            String displayName = type.getReadableName();
+            mcpServer.registerTool(toolName, "Create a " + displayName + " mod element",
+                    objectSchema(props(
+                            "elementName", stringSchema("Name of the new " + displayName),
+                            "properties", objectPropSchema("Customization properties for the " + displayName)
+                    ), "elementName"),
+                    params -> createTypedElement(mcreator, typeName, params));
+        }
+
+        // Bedrock alias tools
+        mcpServer.registerTool("createBedrockItem", "Create a Bedrock item",
+                objectSchema(props("elementName", stringSchema("Name of the Bedrock item"),
+                        "properties", objectPropSchema("Customization properties")), "elementName"),
+                params -> createTypedElement(mcreator, "beitem", params));
+        mcpServer.registerTool("createBedrockBlock", "Create a Bedrock block",
+                objectSchema(props("elementName", stringSchema("Name of the Bedrock block"),
+                        "properties", objectPropSchema("Customization properties")), "elementName"),
+                params -> createTypedElement(mcreator, "beblock", params));
+        mcpServer.registerTool("createBedrockEntity", "Create a Bedrock entity",
+                objectSchema(props("elementName", stringSchema("Name of the Bedrock entity"),
+                        "properties", objectPropSchema("Customization properties")), "elementName"),
+                params -> createTypedElement(mcreator, "beentity", params));
+
+        // Data-pack style helpers
+        mcpServer.registerTool("registerLootTable", "Create a loot table element",
+                objectSchema(props("elementName", stringSchema("Name of the loot table"),
+                        "properties", objectPropSchema("Loot table properties")), "elementName"),
+                params -> createTypedElement(mcreator, "loottable", params));
+        mcpServer.registerTool("registerAdvancement", "Create an advancement element",
+                objectSchema(props("elementName", stringSchema("Name of the advancement"),
+                        "properties", objectPropSchema("Advancement properties")), "elementName"),
+                params -> createTypedElement(mcreator, "achievement", params));
+        mcpServer.registerTool("registerFunction", "Create a function element",
+                objectSchema(props("elementName", stringSchema("Name of the function"),
+                        "properties", objectPropSchema("Function properties")), "elementName"),
+                params -> createTypedElement(mcreator, "function", params));
+
+        // Asset management
+        mcpServer.registerTool("listTexturesByType", "List textures in the workspace",
+                objectSchema(props("type", stringSchema("Texture type: BLOCK, ITEM, ENTITY, etc."))),
+                params -> listTexturesByType(mcreator, params));
+        mcpServer.registerTool("importTexture", "Import a texture into the workspace",
+                objectSchema(props(
+                        "textureName", stringSchema("Name for the texture"),
+                        "sourcePath", stringSchema("Source file path"),
+                        "textureType", stringSchema("Texture type: BLOCK, ITEM, ENTITY, etc.")
+                ), "textureName", "sourcePath", "textureType"),
+                params -> importTexture(mcreator, params));
+        mcpServer.registerTool("deleteTexture", "Delete a texture from the workspace",
+                objectSchema(props(
+                        "textureName", stringSchema("Texture name"),
+                        "textureType", stringSchema("Texture type: BLOCK, ITEM, ENTITY, etc.")
+                ), "textureName", "textureType"),
+                params -> deleteTexture(mcreator, params));
+        mcpServer.registerTool("listModels", "List custom models in the workspace",
+                objectSchema(), params -> listModels(mcreator));
+        mcpServer.registerTool("importModel", "Import a model into the workspace",
+                objectSchema(props(
+                        "modelName", stringSchema("Name for the model"),
+                        "sourcePath", stringSchema("Source file path")
+                ), "modelName", "sourcePath"),
+                params -> importModel(mcreator, params));
+        mcpServer.registerTool("deleteModel", "Delete a model from the workspace",
+                objectSchema(props("modelName", stringSchema("Model name")), "modelName"),
+                params -> deleteModel(mcreator, params));
+        mcpServer.registerTool("getAssetMetadata", "Get metadata for an asset",
+                objectSchema(props(
+                        "assetName", stringSchema("Asset name"),
+                        "assetType", stringSchema("Asset type: texture, model")
+                ), "assetName", "assetType"),
+                params -> getAssetMetadata(mcreator, params));
+
+        // Workspace variables
+        mcpServer.registerTool("listWorkspaceVariables", "List all mod variables in the workspace",
+                objectSchema(), params -> listWorkspaceVariables(mcreator));
+        mcpServer.registerTool("createVariable", "Create a workspace variable",
+                objectSchema(props(
+                        "variableName", stringSchema("Variable name"),
+                        "variableType", stringSchema("Variable type"),
+                        "scope", stringSchema("Variable scope"),
+                        "defaultValue", objectPropSchema("Default value")
+                ), "variableName", "variableType", "scope"),
+                params -> createVariable(mcreator, params));
+        mcpServer.registerTool("updateVariable", "Update an existing workspace variable",
+                objectSchema(props(
+                        "variableName", stringSchema("Variable name"),
+                        "variableType", stringSchema("Variable type"),
+                        "scope", stringSchema("Variable scope"),
+                        "defaultValue", objectPropSchema("Default value")
+                ), "variableName"),
+                params -> updateVariable(mcreator, params));
+        mcpServer.registerTool("deleteVariable", "Delete a workspace variable",
+                objectSchema(props("variableName", stringSchema("Variable name")), "variableName"),
+                params -> deleteVariable(mcreator, params));
+
+        // Localization
+        mcpServer.registerTool("getLocalizations", "Get localization strings for a language",
+                objectSchema(props("language", stringSchema("Language code"))),
+                params -> getLocalizations(mcreator, params));
+        mcpServer.registerTool("setLocalization", "Set a localization string",
+                objectSchema(props(
+                        "key", stringSchema("Localization key"),
+                        "language", stringSchema("Language code"),
+                        "value", stringSchema("Localized value")
+                ), "key", "language", "value"),
+                params -> setLocalization(mcreator, params));
+        mcpServer.registerTool("addLanguage", "Add a new language to the workspace",
+                objectSchema(props("languageCode", stringSchema("Language code")), "languageCode"),
+                params -> addLanguage(mcreator, params));
+
+        // Build & export
+        mcpServer.registerTool("buildForJavaEdition", "Build the workspace for Java Edition",
+                objectSchema(props(
+                        "includeClient", objectPropSchema("Build client artifacts"),
+                        "includeServer", objectPropSchema("Build server artifacts")
+                )),
+                params -> buildForJavaEdition(mcreator, params));
+        mcpServer.registerTool("exportResourcePack", "Export the generated resources as a resource pack",
+                objectSchema(props("outputPath", stringSchema("Output directory path")), "outputPath"),
+                params -> exportResourcePack(mcreator, params));
+        mcpServer.registerTool("exportBehaviorPack", "Export behavior pack data",
+                objectSchema(props("outputPath", stringSchema("Output directory path")), "outputPath"),
+                params -> exportBehaviorPack(mcreator, params));
+        mcpServer.registerTool("deployToGameFolder", "Deploy the mod to the Minecraft game folder",
+                objectSchema(props(
+                        "editionType", stringSchema("java or bedrock"),
+                        "gameFolderPath", stringSchema("Target game folder path")
+                ), "editionType", "gameFolderPath"),
+                params -> deployToGameFolder(mcreator, params));
+
+        // Testing
+        mcpServer.registerTool("runClient", "Start Minecraft client",
+                objectSchema(), params -> executeRunClient(mcreator));
+        mcpServer.registerTool("runServer", "Start Minecraft server",
+                objectSchema(), params -> executeRunServer(mcreator));
+
+        LOG.info("Registered {} MCreator tools", mcpServer.getToolCount());
     }
 
     /**
@@ -186,6 +360,8 @@ public class MCPToolsService {
     private McpTypes.ToolResult createElement(MCreator mcreator, Map<String, Object> params) {
         String elementType = (String) params.get("elementType");
         String elementName = (String) params.get("elementName");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties = (Map<String, Object>) params.get("properties");
 
         LOG.info("Executing createElement tool: {} of type {}", elementName, elementType);
 
@@ -236,6 +412,11 @@ public class MCPToolsService {
                             .newInstance(element);
 
                     applyGeneratableElementDefaults(generatableElement, workspace, finalName);
+
+                    if (properties != null) {
+                        new McpElementPropertyApplier(workspace, finalType.getRegistryName(), finalName)
+                                .applyProperties(generatableElement, properties);
+                    }
 
                     workspace.getModElementManager().storeModElement(generatableElement);
                 } catch (Exception e) {
@@ -291,7 +472,7 @@ public class MCPToolsService {
                     }
                 } else if (field.getType() == TextureHolder.class) {
                     TextureHolder current = (TextureHolder) field.get(generatableElement);
-                    if (current == null) {
+                    if (current == null && !"itemTexture".equals(field.getName())) {
                         TextureType textureType = TextureType.ITEM;
                         TextureReference ref = field.getAnnotation(TextureReference.class);
                         if (ref != null) {
@@ -318,16 +499,26 @@ public class MCPToolsService {
             }
         }
 
-        // Run MCreator's own validator to fill in numeric/option defaults and ensure valid values
-        try {
-            GEValidator.validateAndTryToCorrect(generatableElement, null);
-        } catch (Exception e) {
-            LOG.warn("GE validation failed for element {}: {}", elementName, e.getMessage());
+        // Required fields that GEValidator does not auto-fill
+        if (generatableElement instanceof Fluid fluid) {
+            if (fluid.type == null || fluid.type.isEmpty()) fluid.type = "water";
+        }
+        if (generatableElement instanceof Achievement achievement) {
+            if (achievement.triggerxml == null || achievement.triggerxml.isEmpty()) {
+                achievement.triggerxml = "<xml xmlns=\"https://developers.google.com/blockly/xml\"><block type=\"advancement_trigger\" deletable=\"false\" x=\"40\" y=\"80\"><next><shadow type=\"custom_trigger\"></shadow></next></block></xml>";
+            }
         }
 
         // MCreator's UI defaults Block renderType to 10 (solid block); leaving it at 0 skips model generation
         if (generatableElement instanceof Block && ((Block) generatableElement).renderType == 0) {
             ((Block) generatableElement).renderType = 10;
+        }
+
+        // Run MCreator's own validator to fill in numeric/option defaults and ensure valid values
+        try {
+            GEValidator.validateAndTryToCorrect(generatableElement, null);
+        } catch (Exception e) {
+            LOG.warn("GE validation failed for element {}: {}", elementName, e.getMessage());
         }
     }
 
@@ -514,6 +705,419 @@ public class MCPToolsService {
     }
 
     /**
+     * Get detailed workspace settings
+     */
+    private McpTypes.ToolResult getWorkspaceSettings(MCreator mcreator) {
+        LOG.info("Executing getWorkspaceSettings tool");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
+                return createErrorResult("No workspace loaded");
+            }
+
+            net.mcreator.workspace.settings.WorkspaceSettings settings = workspace.getWorkspaceSettings();
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("modName", settings.getModName());
+            map.put("modId", settings.getModID());
+            map.put("version", settings.getVersion());
+            map.put("description", settings.getDescription());
+            map.put("author", settings.getAuthor());
+            map.put("websiteURL", settings.getWebsiteURL());
+            map.put("license", settings.getLicense());
+            map.put("modPicture", settings.getModPicture());
+            map.put("credits", settings.getCredits());
+            map.put("serverSideOnly", settings.isServerSideOnly());
+            map.put("updateURL", settings.getUpdateURL());
+            map.put("requiredMods", settings.getRequiredMods());
+            map.put("dependencies", settings.getDependencies());
+            map.put("dependants", settings.getDependants());
+            map.put("mcreatorDependencies", settings.getMCreatorDependencies());
+            map.put("currentGenerator", settings.getCurrentGenerator());
+
+            String json = objectMapper.writeValueAsString(map);
+            return createSuccessResult("Workspace settings retrieved:\n" + json);
+
+        } catch (Exception e) {
+            LOG.error("Error getting workspace settings", e);
+            return createErrorResult("Failed to get workspace settings: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Update workspace settings
+     */
+    private McpTypes.ToolResult updateWorkspaceSettings(MCreator mcreator, Map<String, Object> params) {
+        LOG.info("Executing updateWorkspaceSettings tool");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
+                return createErrorResult("No workspace loaded");
+            }
+
+            net.mcreator.workspace.settings.WorkspaceSettings settings = workspace.getWorkspaceSettings();
+            List<String> updated = new ArrayList<>();
+
+            for (Map.Entry<String, Object> entry : params.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                if ("settings".equals(key) && value instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> settingsMap = (Map<String, Object>) value;
+                    for (Map.Entry<String, Object> se : settingsMap.entrySet()) {
+                        if (applyWorkspaceSetting(settings, se.getKey(), se.getValue()))
+                            updated.add(se.getKey());
+                    }
+                } else if (!"workspace".equals(key)) {
+                    if (applyWorkspaceSetting(settings, key, value))
+                        updated.add(key);
+                }
+            }
+
+            workspace.markDirty();
+
+            return createSuccessResult("Updated workspace settings: " + updated);
+
+        } catch (Exception e) {
+            LOG.error("Error updating workspace settings", e);
+            return createErrorResult("Failed to update workspace settings: " + e.getMessage());
+        }
+    }
+
+    private boolean applyWorkspaceSetting(net.mcreator.workspace.settings.WorkspaceSettings settings, String key, Object value) {
+        if (value == null)
+            return false;
+        try {
+            switch (key.toLowerCase(Locale.ROOT)) {
+            case "modname", "mod_name" -> {
+                settings.setModName(String.valueOf(value));
+                return true;
+            }
+            case "version" -> {
+                settings.setVersion(String.valueOf(value));
+                return true;
+            }
+            case "description" -> {
+                settings.setDescription(String.valueOf(value));
+                return true;
+            }
+            case "author" -> {
+                settings.setAuthor(String.valueOf(value));
+                return true;
+            }
+            case "websiteurl", "website" -> {
+                settings.setWebsiteURL(String.valueOf(value));
+                return true;
+            }
+            case "license" -> {
+                settings.setLicense(String.valueOf(value));
+                return true;
+            }
+            case "modpicture", "mod_picture" -> {
+                settings.setModPicture(String.valueOf(value));
+                return true;
+            }
+            case "credits" -> {
+                settings.setCredits(String.valueOf(value));
+                return true;
+            }
+            case "serversideonly" -> {
+                settings.setServerSideOnly(toBoolean(value));
+                return true;
+            }
+            case "updateurl", "update_url" -> {
+                settings.setUpdateURL(String.valueOf(value));
+                return true;
+            }
+            case "requiredmods", "required_mods" -> {
+                settings.setRequiredMods(toStringSet(value));
+                return true;
+            }
+            case "dependencies" -> {
+                settings.setDependencies(toStringSet(value));
+                return true;
+            }
+            case "dependants" -> {
+                settings.setDependants(toStringSet(value));
+                return true;
+            }
+            case "mcreatordependencies", "mcreator_dependencies" -> {
+                settings.setMCreatorDependencies(toStringSet(value));
+                return true;
+            }
+            }
+        } catch (Exception e) {
+            LOG.warn("Could not set workspace setting {}: {}", key, e.getMessage());
+        }
+        return false;
+    }
+
+    private boolean toBoolean(Object value) {
+        if (value instanceof Boolean b)
+            return b;
+        String s = String.valueOf(value).toLowerCase(Locale.ROOT);
+        return "true".equals(s) || "yes".equals(s) || "1".equals(s) || "on".equals(s);
+    }
+
+    private Set<String> toStringSet(Object value) {
+        Set<String> result = new HashSet<>();
+        if (value instanceof String s) {
+            if (!s.isEmpty())
+                result.add(s);
+        } else if (value instanceof Iterable<?> it) {
+            for (Object o : it) {
+                if (o != null && !String.valueOf(o).isEmpty())
+                    result.add(String.valueOf(o));
+            }
+        } else if (value instanceof String[] arr) {
+            for (String s : arr) {
+                if (s != null && !s.isEmpty())
+                    result.add(s);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * List all available mod element types
+     */
+    private McpTypes.ToolResult listModElementTypes(MCreator mcreator) {
+        LOG.info("Executing listModElementTypes tool");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
+                return createErrorResult("No workspace loaded");
+            }
+
+            List<Map<String, Object>> types = new ArrayList<>();
+            for (ModElementType<?> type : ModElementTypeLoader.getAllModElementTypes()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("registryName", type.getRegistryName());
+                map.put("readableName", type.getReadableName());
+                map.put("description", type.getDescription());
+                map.put("storageClass", type.getModElementStorageClass().getSimpleName());
+                types.add(map);
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("types", types);
+            result.put("count", types.size());
+
+            String json = objectMapper.writeValueAsString(result);
+            return createSuccessResult("Available element types:\n" + json);
+
+        } catch (Exception e) {
+            LOG.error("Error listing element types", e);
+            return createErrorResult("Failed to list element types: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get all properties of a mod element as JSON
+     */
+    private McpTypes.ToolResult getElementProperties(MCreator mcreator, Map<String, Object> params) {
+        String elementName = (String) params.get("elementName");
+        LOG.info("Executing getElementProperties tool: {}", elementName);
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
+                return createErrorResult("No workspace loaded");
+            }
+
+            if (elementName == null || elementName.trim().isEmpty()) {
+                return createErrorResult("Element name is required");
+            }
+
+            ModElement element = workspace.getModElementByName(elementName.trim());
+            if (element == null) {
+                return createErrorResult("Element '" + elementName + "' not found");
+            }
+
+            GeneratableElement ge = element.getGeneratableElement();
+            if (ge == null) {
+                return createErrorResult("Element has no generatable data");
+            }
+
+            String json = workspace.getModElementManager().generatableElementToJSON(ge);
+            return createSuccessResult("Properties for '" + elementName + "':\n" + json);
+
+        } catch (Exception e) {
+            LOG.error("Error getting element properties", e);
+            return createErrorResult("Failed to get element properties: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Search elements by name or type
+     */
+    private McpTypes.ToolResult searchElements(MCreator mcreator, Map<String, Object> params) {
+        String query = (String) params.get("query");
+        LOG.info("Executing searchElements tool: {}", query);
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
+                return createErrorResult("No workspace loaded");
+            }
+
+            if (query == null || query.trim().isEmpty()) {
+                return createErrorResult("Query is required");
+            }
+
+            String lower = query.toLowerCase(Locale.ROOT);
+            List<Map<String, Object>> results = workspace.getModElements().stream()
+                    .filter(e -> e.getName().toLowerCase(Locale.ROOT).contains(lower)
+                            || e.getType().getRegistryName().toLowerCase(Locale.ROOT).contains(lower))
+                    .map(this::modElementToMap)
+                    .toList();
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("elements", results);
+            result.put("count", results.size());
+
+            String json = objectMapper.writeValueAsString(result);
+            return createSuccessResult("Found " + results.size() + " matching elements:\n" + json);
+
+        } catch (Exception e) {
+            LOG.error("Error searching elements", e);
+            return createErrorResult("Failed to search elements: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Validate a mod element for missing textures, broken references, etc.
+     */
+    private McpTypes.ToolResult validateElement(MCreator mcreator, Map<String, Object> params) {
+        String elementName = (String) params.get("elementName");
+        LOG.info("Executing validateElement tool: {}", elementName);
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
+                return createErrorResult("No workspace loaded");
+            }
+
+            if (elementName == null || elementName.trim().isEmpty()) {
+                return createErrorResult("Element name is required");
+            }
+
+            ModElement element = workspace.getModElementByName(elementName.trim());
+            if (element == null) {
+                return createErrorResult("Element '" + elementName + "' not found");
+            }
+
+            GeneratableElement ge = element.getGeneratableElement();
+            if (ge == null) {
+                return createErrorResult("Element has no generatable data");
+            }
+
+            List<String> warnings = new ArrayList<>();
+            List<String> errors = new ArrayList<>();
+            validateGeneratableElement(ge, warnings);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("elementName", elementName);
+            result.put("valid", errors.isEmpty());
+            result.put("warnings", warnings);
+            result.put("errors", errors);
+
+            String json = objectMapper.writeValueAsString(result);
+            return createSuccessResult("Validation result for '" + elementName + "':\n" + json);
+
+        } catch (Exception e) {
+            LOG.error("Error validating element", e);
+            return createErrorResult("Failed to validate element: " + e.getMessage());
+        }
+    }
+
+    private void validateGeneratableElement(GeneratableElement ge, List<String> warnings) {
+        List<Field> fields = new ArrayList<>();
+        Class<?> clazz = ge.getClass();
+        while (clazz != null && clazz != Object.class) {
+            fields.addAll(Arrays.asList(clazz.getDeclaredFields()));
+            clazz = clazz.getSuperclass();
+        }
+
+        for (Field field : fields) {
+            field.setAccessible(true);
+            try {
+                Object value = field.get(ge);
+                if (value instanceof net.mcreator.element.parts.TextureHolder th) {
+                    if (th.isEmpty()) {
+                        warnings.add("Texture field '" + field.getName() + "' is empty");
+                    }
+                } else if (value instanceof net.mcreator.generator.mapping.MappableElement me) {
+                    if (!me.isValidReference()) {
+                        warnings.add("Reference field '" + field.getName() + "' has invalid value: " + me.getUnmappedValue());
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /**
+     * List textures in the workspace, optionally filtered by type
+     */
+    private McpTypes.ToolResult listTexturesByType(MCreator mcreator, Map<String, Object> params) {
+        String typeName = (String) params.get("type");
+        LOG.info("Executing listTexturesByType tool: {}", typeName);
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
+                return createErrorResult("No workspace loaded");
+            }
+
+            List<Map<String, Object>> textures = new ArrayList<>();
+            if (typeName != null && !typeName.trim().isEmpty()) {
+                TextureType textureType;
+                try {
+                    textureType = TextureType.valueOf(typeName.trim().toUpperCase(Locale.ROOT));
+                } catch (IllegalArgumentException e) {
+                    return createErrorResult("Unknown texture type: " + typeName);
+                }
+                List<File> files = workspace.getFolderManager().getTexturesList(textureType);
+                for (File file : files) {
+                    if (file.getName().toLowerCase(Locale.ROOT).endsWith(".png")) {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("name", file.getName().replaceAll("\\.png$", ""));
+                        map.put("type", textureType.name());
+                        map.put("path", file.getAbsolutePath());
+                        textures.add(map);
+                    }
+                }
+            } else {
+                for (TextureType textureType : TextureType.values()) {
+                    for (File file : workspace.getFolderManager().getTexturesList(textureType)) {
+                        if (file.getName().toLowerCase(Locale.ROOT).endsWith(".png")) {
+                            Map<String, Object> map = new HashMap<>();
+                            map.put("name", file.getName().replaceAll("\\.png$", ""));
+                            map.put("type", textureType.name());
+                            map.put("path", file.getAbsolutePath());
+                            textures.add(map);
+                        }
+                    }
+                }
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("textures", textures);
+            result.put("count", textures.size());
+
+            String json = objectMapper.writeValueAsString(result);
+            return createSuccessResult("Found " + textures.size() + " textures:\n" + json);
+
+        } catch (Exception e) {
+            LOG.error("Error listing textures", e);
+            return createErrorResult("Failed to list textures: " + e.getMessage());
+        }
+    }
+
+    /**
      * Run client tool
      */
     private McpTypes.ToolResult executeRunClient(MCreator mcreator) {
@@ -591,5 +1195,644 @@ public class MCPToolsService {
             new McpTypes.ToolContent("text", "Error: " + message)
         );
         return new McpTypes.ToolResult(content, true);
+    }
+
+    // ---- Additional tool implementations ----
+
+    /**
+     * Helper for per-type creation shortcuts. Injects the elementType parameter and delegates to createElement.
+     */
+    private McpTypes.ToolResult createTypedElement(MCreator mcreator, String elementType, Map<String, Object> params) {
+        Map<String, Object> copy = new HashMap<>(params != null ? params : Map.of());
+        copy.put("elementType", elementType);
+        return createElement(mcreator, copy);
+    }
+
+    /**
+     * Import a texture into the workspace from a source file path.
+     */
+    private McpTypes.ToolResult importTexture(MCreator mcreator, Map<String, Object> params) {
+        String textureName = (String) params.get("textureName");
+        String sourcePath = (String) params.get("sourcePath");
+        String textureTypeName = (String) params.get("textureType");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            TextureType textureType;
+            try {
+                textureType = TextureType.valueOf(textureTypeName.trim().toUpperCase(Locale.ROOT));
+            } catch (Exception e) {
+                return createErrorResult("Unknown texture type: " + textureTypeName);
+            }
+
+            File source = new File(sourcePath);
+            if (!source.exists()) return createErrorResult("Source file not found: " + sourcePath);
+
+            File target = workspace.getFolderManager().getTextureFile(textureName.replaceAll("\\.png$", ""), textureType);
+            target.getParentFile().mkdirs();
+            java.nio.file.Files.copy(source.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return createSuccessResult("Texture imported to " + target.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error importing texture", e);
+            return createErrorResult("Failed to import texture: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete a texture from the workspace.
+     */
+    private McpTypes.ToolResult deleteTexture(MCreator mcreator, Map<String, Object> params) {
+        String textureName = (String) params.get("textureName");
+        String textureTypeName = (String) params.get("textureType");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            TextureType textureType;
+            try {
+                textureType = TextureType.valueOf(textureTypeName.trim().toUpperCase(Locale.ROOT));
+            } catch (Exception e) {
+                return createErrorResult("Unknown texture type: " + textureTypeName);
+            }
+
+            File target = workspace.getFolderManager().getTextureFile(textureName.replaceAll("\\.png$", ""), textureType);
+            if (!target.exists()) return createErrorResult("Texture not found: " + target.getAbsolutePath());
+
+            target.delete();
+            return createSuccessResult("Texture deleted: " + target.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error deleting texture", e);
+            return createErrorResult("Failed to delete texture: " + e.getMessage());
+        }
+    }
+
+    /**
+     * List custom models in the workspace models directory.
+     */
+    private McpTypes.ToolResult listModels(MCreator mcreator) {
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            File modelsDir = workspace.getFolderManager().getModelsDir();
+            List<Map<String, Object>> models = new ArrayList<>();
+            if (modelsDir.exists() && modelsDir.isDirectory()) {
+                for (File f : modelsDir.listFiles()) {
+                    if (f.isFile()) {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("name", f.getName());
+                        map.put("path", f.getAbsolutePath());
+                        map.put("size", f.length());
+                        models.add(map);
+                    }
+                }
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("models", models);
+            result.put("count", models.size());
+            return createSuccessResult("Found " + models.size() + " models:\n" + objectMapper.writeValueAsString(result));
+        } catch (Exception e) {
+            LOG.error("Error listing models", e);
+            return createErrorResult("Failed to list models: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Import a model file into the workspace models directory.
+     */
+    private McpTypes.ToolResult importModel(MCreator mcreator, Map<String, Object> params) {
+        String modelName = (String) params.get("modelName");
+        String sourcePath = (String) params.get("sourcePath");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            File source = new File(sourcePath);
+            if (!source.exists()) return createErrorResult("Source file not found: " + sourcePath);
+
+            File modelsDir = workspace.getFolderManager().getModelsDir();
+            modelsDir.mkdirs();
+            File target = new File(modelsDir, modelName);
+            java.nio.file.Files.copy(source.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return createSuccessResult("Model imported to " + target.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error importing model", e);
+            return createErrorResult("Failed to import model: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete a model from the workspace.
+     */
+    private McpTypes.ToolResult deleteModel(MCreator mcreator, Map<String, Object> params) {
+        String modelName = (String) params.get("modelName");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            File target = new File(workspace.getFolderManager().getModelsDir(), modelName);
+            if (!target.exists()) return createErrorResult("Model not found: " + target.getAbsolutePath());
+
+            target.delete();
+            return createSuccessResult("Model deleted: " + target.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error deleting model", e);
+            return createErrorResult("Failed to delete model: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get metadata (size, dimensions for textures) for an asset.
+     */
+    private McpTypes.ToolResult getAssetMetadata(MCreator mcreator, Map<String, Object> params) {
+        String assetName = (String) params.get("assetName");
+        String assetType = (String) params.get("assetType");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            File file = null;
+            int width = 0, height = 0;
+            if ("texture".equalsIgnoreCase(assetType)) {
+                for (TextureType tt : TextureType.values()) {
+                    File candidate = workspace.getFolderManager().getTextureFile(assetName.replaceAll("\\.png$", ""), tt);
+                    if (candidate.exists()) {
+                        file = candidate;
+                        break;
+                    }
+                }
+                if (file != null) {
+                    java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(file);
+                    if (img != null) {
+                        width = img.getWidth();
+                        height = img.getHeight();
+                    }
+                }
+            } else if ("model".equalsIgnoreCase(assetType)) {
+                file = new File(workspace.getFolderManager().getModelsDir(), assetName);
+            }
+
+            if (file == null || !file.exists()) return createErrorResult("Asset not found: " + assetName);
+
+            Map<String, Object> map = new HashMap<>();
+            map.put("name", file.getName());
+            map.put("path", file.getAbsolutePath());
+            map.put("size", file.length());
+            if (width > 0 && height > 0) {
+                map.put("width", width);
+                map.put("height", height);
+            }
+            return createSuccessResult("Asset metadata:\n" + objectMapper.writeValueAsString(map));
+        } catch (Exception e) {
+            LOG.error("Error getting asset metadata", e);
+            return createErrorResult("Failed to get asset metadata: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Validate the workspace by checking all mod elements for missing textures and invalid references.
+     */
+    private McpTypes.ToolResult validateWorkspace(MCreator mcreator) {
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            List<String> warnings = new ArrayList<>();
+            for (ModElement element : workspace.getModElements()) {
+                GeneratableElement ge = element.getGeneratableElement();
+                if (ge == null) {
+                    warnings.add(element.getName() + ": missing generatable data");
+                    continue;
+                }
+
+                try {
+                    GEValidator.validateAndTryToCorrect(ge, null);
+                } catch (Exception e) {
+                    warnings.add(element.getName() + ": validation error " + e.getMessage());
+                }
+
+                for (Field field : getAllFields(ge.getClass())) {
+                    field.setAccessible(true);
+                    try {
+                        Object value = field.get(ge);
+                        if (value instanceof TextureHolder th) {
+                            boolean found = false;
+                            for (TextureType tt : TextureType.values()) {
+                                if (th.toFile(tt).exists()) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found && th.toString() != null && !th.toString().isEmpty()) {
+                                warnings.add(element.getName() + ": missing texture " + th.toString());
+                            }
+                        } else if (value instanceof MappableElement me) {
+                            if (!me.isValidReference() && !me.isEmpty()) {
+                                warnings.add(element.getName() + ": invalid reference " + me.getUnmappedValue() + " in " + field.getName());
+                            }
+                        } else if (value instanceof List<?> list) {
+                            for (Object o : list) {
+                                if (o instanceof MappableElement me && !me.isValidReference() && !me.isEmpty()) {
+                                    warnings.add(element.getName() + ": invalid reference " + me.getUnmappedValue() + " in " + field.getName());
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            if (warnings.isEmpty()) return createSuccessResult("Workspace validation passed");
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("warnings", warnings);
+            return createSuccessResult("Workspace validation found " + warnings.size() + " warnings:\n" + objectMapper.writeValueAsString(result));
+        } catch (Exception e) {
+            LOG.error("Error validating workspace", e);
+            return createErrorResult("Failed to validate workspace: " + e.getMessage());
+        }
+    }
+
+    private List<Field> getAllFields(Class<?> clazz) {
+        List<Field> fields = new ArrayList<>();
+        while (clazz != null && clazz != Object.class) {
+            fields.addAll(Arrays.asList(clazz.getDeclaredFields()));
+            clazz = clazz.getSuperclass();
+        }
+        return fields;
+    }
+
+    /**
+     * List workspace variables.
+     */
+    private McpTypes.ToolResult listWorkspaceVariables(MCreator mcreator) {
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            List<Map<String, Object>> vars = new ArrayList<>();
+            for (net.mcreator.workspace.elements.VariableElement v : workspace.getVariableElements()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("name", v.getName());
+                map.put("type", v.getTypeString());
+                map.put("scope", v.getScope() != null ? v.getScope().name() : null);
+                map.put("value", v.getValue());
+                vars.add(map);
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("variables", vars);
+            result.put("count", vars.size());
+            return createSuccessResult("Found " + vars.size() + " variables:\n" + objectMapper.writeValueAsString(result));
+        } catch (Exception e) {
+            LOG.error("Error listing variables", e);
+            return createErrorResult("Failed to list variables: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Create a workspace variable.
+     */
+    private McpTypes.ToolResult createVariable(MCreator mcreator, Map<String, Object> params) {
+        String variableName = (String) params.get("variableName");
+        String variableType = (String) params.get("variableType");
+        String scope = (String) params.get("scope");
+        Object defaultValue = params.get("defaultValue");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            net.mcreator.workspace.elements.VariableElement var = new net.mcreator.workspace.elements.VariableElement(variableName);
+            net.mcreator.workspace.elements.VariableType vt = new net.mcreator.workspace.elements.VariableType();
+            vt.setName(variableType != null ? variableType : "Number");
+            var.setType(vt);
+            if (scope != null) {
+                try {
+                    var.setScope(net.mcreator.workspace.elements.VariableType.Scope.valueOf(scope.toUpperCase(Locale.ROOT)));
+                } catch (Exception ignored) {
+                    var.setScope(net.mcreator.workspace.elements.VariableType.Scope.GLOBAL_MAP);
+                }
+            }
+            var.setValue(defaultValue);
+            workspace.addVariableElement(var);
+            workspace.markDirty();
+            return createSuccessResult("Variable '" + variableName + "' created");
+        } catch (Exception e) {
+            LOG.error("Error creating variable", e);
+            return createErrorResult("Failed to create variable: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Update an existing workspace variable.
+     */
+    private McpTypes.ToolResult updateVariable(MCreator mcreator, Map<String, Object> params) {
+        String variableName = (String) params.get("variableName");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            net.mcreator.workspace.elements.VariableElement var = workspace.getVariableElementByName(variableName);
+            if (var == null) return createErrorResult("Variable not found: " + variableName);
+
+            String variableType = (String) params.get("variableType");
+            String scope = (String) params.get("scope");
+            Object defaultValue = params.get("defaultValue");
+
+            if (variableType != null) {
+                net.mcreator.workspace.elements.VariableType vt = new net.mcreator.workspace.elements.VariableType();
+                vt.setName(variableType);
+                var.setType(vt);
+            }
+            if (scope != null) {
+                try {
+                    var.setScope(net.mcreator.workspace.elements.VariableType.Scope.valueOf(scope.toUpperCase(Locale.ROOT)));
+                } catch (Exception ignored) {
+                }
+            }
+            if (defaultValue != null) var.setValue(defaultValue);
+            workspace.markDirty();
+            return createSuccessResult("Variable '" + variableName + "' updated");
+        } catch (Exception e) {
+            LOG.error("Error updating variable", e);
+            return createErrorResult("Failed to update variable: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete a workspace variable.
+     */
+    private McpTypes.ToolResult deleteVariable(MCreator mcreator, Map<String, Object> params) {
+        String variableName = (String) params.get("variableName");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            net.mcreator.workspace.elements.VariableElement var = workspace.getVariableElementByName(variableName);
+            if (var == null) return createErrorResult("Variable not found: " + variableName);
+
+            workspace.removeVariableElement(var);
+            workspace.markDirty();
+            return createSuccessResult("Variable '" + variableName + "' deleted");
+        } catch (Exception e) {
+            LOG.error("Error deleting variable", e);
+            return createErrorResult("Failed to delete variable: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get localization strings for a language.
+     */
+    private McpTypes.ToolResult getLocalizations(MCreator mcreator, Map<String, Object> params) {
+        String language = (String) params.get("language");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            Map<String, ? extends Map<String, String>> all = workspace.getLanguageMap();
+            if (language == null || language.isEmpty()) {
+                return createSuccessResult("All localizations:\n" + objectMapper.writeValueAsString(all));
+            }
+            Map<String, String> map = all.get(language);
+            if (map == null) return createErrorResult("Language not found: " + language);
+            return createSuccessResult("Localizations for " + language + ":\n" + objectMapper.writeValueAsString(map));
+        } catch (Exception e) {
+            LOG.error("Error getting localizations", e);
+            return createErrorResult("Failed to get localizations: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Set a localization string.
+     */
+    private McpTypes.ToolResult setLocalization(MCreator mcreator, Map<String, Object> params) {
+        String key = (String) params.get("key");
+        String language = (String) params.get("language");
+        String value = (String) params.get("value");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            // MCreator's setLocalization does not take a language parameter, so update the language map directly
+            Map<String, LinkedHashMap<String, String>> map = (Map<String, LinkedHashMap<String, String>>) (Map<?, ?>) workspace.getLanguageMap();
+            if (!map.containsKey(language) || map.get(language) == null) {
+                workspace.addLanguage(language, new LinkedHashMap<>());
+            }
+            LinkedHashMap<String, String> lang = map.get(language);
+            if (lang == null) {
+                lang = new LinkedHashMap<>();
+                map.put(language, lang);
+            }
+            lang.put(key, value);
+            workspace.markDirty();
+            return createSuccessResult("Localization set: " + language + "." + key + " = " + value);
+        } catch (Exception e) {
+            LOG.error("Error setting localization", e);
+            return createErrorResult("Failed to set localization: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Add a new language to the workspace.
+     */
+    private McpTypes.ToolResult addLanguage(MCreator mcreator, Map<String, Object> params) {
+        String languageCode = (String) params.get("languageCode");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            workspace.addLanguage(languageCode, new LinkedHashMap<>());
+            workspace.markDirty();
+            return createSuccessResult("Language '" + languageCode + "' added");
+        } catch (Exception e) {
+            LOG.error("Error adding language", e);
+            return createErrorResult("Failed to add language: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Build the workspace for Java Edition and return the resulting JAR path.
+     */
+    private McpTypes.ToolResult buildForJavaEdition(MCreator mcreator, Map<String, Object> params) {
+        try {
+            McpTypes.ToolResult start = executeBuildWorkspace(mcreator);
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            File libsDir = new File(workspace.getWorkspaceFolder(), "build/libs");
+            File jar = null;
+            if (libsDir.exists()) {
+                File[] jars = libsDir.listFiles(f -> f.getName().endsWith(".jar"));
+                if (jars != null && jars.length > 0) {
+                    jar = jars[0];
+                    for (File j : jars) {
+                        if (j.lastModified() > jar.lastModified()) jar = j;
+                    }
+                }
+            }
+
+            String extra = jar != null ? "\nOutput JAR: " + jar.getAbsolutePath() + " (size: " + jar.length() + " bytes)" : "";
+            return createSuccessResult("Java Edition build initiated" + extra + "\n" + start.getContent().get(0).getText());
+        } catch (Exception e) {
+            LOG.error("Error building for Java Edition", e);
+            return createErrorResult("Failed to build for Java Edition: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Export the generated resource pack by copying resources to the requested output path.
+     */
+    private McpTypes.ToolResult exportResourcePack(MCreator mcreator, Map<String, Object> params) {
+        String outputPath = (String) params.get("outputPath");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            File resourcesDir = new File(workspace.getWorkspaceFolder(), "build/resources/main");
+            if (!resourcesDir.exists()) return createErrorResult("No built resources found. Build the workspace first.");
+
+            File target = new File(outputPath);
+            target.mkdirs();
+            copyDirectory(resourcesDir, target);
+            return createSuccessResult("Resource pack exported to " + target.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error exporting resource pack", e);
+            return createErrorResult("Failed to export resource pack: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Export behavior pack data. Not fully supported for Java Edition; copies data resources as a best effort.
+     */
+    private McpTypes.ToolResult exportBehaviorPack(MCreator mcreator, Map<String, Object> params) {
+        String outputPath = (String) params.get("outputPath");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            File dataDir = new File(workspace.getWorkspaceFolder(), "build/resources/main/data");
+            if (!dataDir.exists()) return createErrorResult("No built data resources found. Build the workspace first.");
+
+            File target = new File(outputPath);
+            target.mkdirs();
+            copyDirectory(dataDir, target);
+            return createSuccessResult("Behavior pack data exported to " + target.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error exporting behavior pack", e);
+            return createErrorResult("Failed to export behavior pack: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Deploy the built mod to the Minecraft game folder.
+     */
+    private McpTypes.ToolResult deployToGameFolder(MCreator mcreator, Map<String, Object> params) {
+        String editionType = (String) params.get("editionType");
+        String gameFolderPath = (String) params.get("gameFolderPath");
+
+        try {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) return createErrorResult("No workspace loaded");
+
+            if (!"java".equalsIgnoreCase(editionType)) {
+                return createErrorResult("Only java edition deployment is currently supported");
+            }
+
+            File libsDir = new File(workspace.getWorkspaceFolder(), "build/libs");
+            File jar = null;
+            if (libsDir.exists()) {
+                File[] jars = libsDir.listFiles(f -> f.getName().endsWith(".jar"));
+                if (jars != null && jars.length > 0) {
+                    jar = jars[0];
+                    for (File j : jars) {
+                        if (j.lastModified() > jar.lastModified()) jar = j;
+                    }
+                }
+            }
+
+            if (jar == null || !jar.exists()) return createErrorResult("No built JAR found. Build the workspace first.");
+
+            File modsDir = new File(gameFolderPath, "mods");
+            modsDir.mkdirs();
+            File target = new File(modsDir, jar.getName());
+            java.nio.file.Files.copy(jar.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return createSuccessResult("Deployed " + jar.getName() + " to " + target.getAbsolutePath());
+        } catch (Exception e) {
+            LOG.error("Error deploying to game folder", e);
+            return createErrorResult("Failed to deploy to game folder: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Recursively copy a directory.
+     */
+    private void copyDirectory(File source, File target) throws IOException {
+        if (source.isDirectory()) {
+            target.mkdirs();
+            for (File child : source.listFiles()) {
+                copyDirectory(child, new File(target, child.getName()));
+            }
+        } else {
+            java.nio.file.Files.copy(source.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    // ---- JSON schema helpers ----
+
+    private Map<String, Object> objectSchema() {
+        return Map.of("type", "object", "properties", Map.of());
+    }
+
+    private Map<String, Object> objectSchema(Map<String, Object> properties) {
+        return Map.of("type", "object", "properties", properties);
+    }
+
+    private Map<String, Object> objectSchema(Map<String, Object> properties, String... required) {
+        Map<String, Object> schema = new HashMap<>();
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        if (required.length > 0)
+            schema.put("required", Arrays.asList(required));
+        return schema;
+    }
+
+    private Map<String, Object> stringSchema(String description) {
+        return Map.of("type", "string", "description", description);
+    }
+
+    private Map<String, Object> objectPropSchema(String description) {
+        return Map.of("type", "object", "description", description);
+    }
+
+    private Map<String, Object> arraySchema(String description, String itemType) {
+        return Map.of("type", "array", "description", description, "items", Map.of("type", itemType));
+    }
+
+    private Map<String, Object> props(Object... keyValues) {
+        Map<String, Object> map = new HashMap<>();
+        for (int i = 0; i + 1 < keyValues.length; i += 2) {
+            map.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        return map;
+    }
+
+    private String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 }
