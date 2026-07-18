@@ -97,30 +97,172 @@ MCreatorMCP/
 
 ## Available Tools
 
+The MCP server now exposes **178 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, procedure templates, lifecycle, folders, fine-grained editing, texture/model processing, prompt-driven texture generation, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, build-error diagnostics, element JSON export/import, bulk element operations, advanced mob AI, full Code element editing, and build-system hooks. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
 - `getWorkspaceInfo()` - Get detailed workspace information
+- `getWorkspaceSettings()` - Get all workspace settings
+- `updateWorkspaceSettings(settings)` - Update workspace settings
 - `regenerateCode()` - Regenerate code without building
+- `exportWorkspace(outputPath, includeRunDir?)` - Export the current workspace to a shareable `.zip`
+- `importWorkspace(zipPath, targetFolder?)` - Import a workspace `.zip` (extract only; open manually or restart MCreator)
+- `listRecentWorkspaces()` - List recently opened MCreator workspaces
 
-### Element Operations
+### Element Discovery & Search
 - `listModElements(elementType?)` - List mod elements with optional filtering
-- `openElement(elementName)` - Open element in MCreator UI
-- `createElement(elementType, elementName)` - Create new mod element
+- `listModElementTypes()` - List all available element types
+- `getElementProperties(elementName)` - Get all properties of a mod element as JSON
+- `searchElements(query)` - Search mod elements by name or type
 - `deleteElement(elementName)` - Delete mod element
+- `validateElement(elementName)` - Validate a mod element
+- `validateWorkspace()` - Validate the entire workspace
 
-### Testing & Execution
-- `runClient()` - Start Minecraft client
-- `runServer()` - Start Minecraft server
+### Generic & Typed Element Creation
+- `createElement(elementType, elementName, properties?)` - Create any mod element with a rich JSON property object
+- `createItem`, `createBlock`, `createTool`, `createArmor`, `createFood`, `createEnchantment`, `createPotion`, `createLivingEntity`, `createRecipe`, `createParticle`, `createFluid`, `createBiome`, `createDimension`, `createAchievement`, `createLootTable`, `createFunction`, `createCommand`, `createFeature`, `createStructure`, `createPlant`, `createProjectile`, `createVillagerProfession`, `createVillagerTrade`, `createPotionEffect`, `createAttribute`, `createKeyBinding`, `createDamageType`, `createPainting`, `createBannerPattern`, `createGui`, `createOverlay`, `createGamerule`, `createItemextension`, `createArmortrim`, `createCode`, ... — one shortcut per registered `ModElementType`
+- `createBedrockItem`, `createBedrockBlock`, `createBedrockEntity` — Bedrock Edition aliases (where the generator supports them)
+- `registerLootTable`, `registerAdvancement`, `registerFunction` — data-pack style helpers
 
-### Resource Management
-- `listTextures()` - List texture files
-- `listSounds()` - List sound files
-- `listStructures()` - List structure files
+### Texture & Asset Management
+- `listTexturesByType(type?)` - List textures, optionally filtered by type
+- `importTexture(textureName, sourcePath, textureType)` - Import a PNG texture
+- `deleteTexture(textureName, textureType)` - Delete a texture
+- `listModels()` - List custom models
+- `importModel(modelName, sourcePath)` - Import a model (Java JSON/OBJ)
+- `bindCustomModel(elementName, modelName, modelType, sourcePath?, modelDefinition?, texture?)` - Bind an imported/generated JSON/OBJ/Java model to a block or item (writes the companion `.json.textures` mapping for JSON models)
+- `deleteModel(modelName)` - Delete a model
+- `getAssetMetadata(assetName, assetType)` - Get asset metadata
 
-### Variables & Localization
-- `listVariables()` - List workspace variables
-- `createVariable(name, type, scope)` - Create new variable
-- `getLocalizations(language?)` - Get localization entries
+### Installed Plugins & Mod APIs
+- `listInstalledPlugins()` - List all installed MCreator plugins and generators
+- `listModAPIs()` - List API plugins/addons available for the current generator
+- `enableModAPI(apiId)` / `disableModAPI(apiId)` - Enable or disable an API dependency (e.g. `mcreator_link`)
+
+### Workspace Variables & Localization
+- `listWorkspaceVariables()` - List all workspace variables
+- `createVariable(variableName, variableType, scope, defaultValue?)` - Create a variable
+- `updateVariable(variableName, variableType?, scope?, defaultValue?)` - Update a variable
+- `deleteVariable(variableName)` - Delete a variable
+- `getLocalizations(language?)` - Get localization strings
+- `setLocalization(key, language, value)` - Set a localization string
+- `addLanguage(languageCode)` - Add a new language
+
+### Build, Export, Deploy & Testing
+- `buildForJavaEdition(includeClient?, includeServer?)` - Build Java Edition mod and return JAR path
+- `exportResourcePack(outputPath)` - Copy built resources to a folder
+- `exportBehaviorPack(outputPath)` - Copy built data resources to a folder
+- `deployToGameFolder(editionType, gameFolderPath)` - Copy the built JAR to a `mods` folder
+- `runClient()` - Start the Minecraft client
+- `runServer()` - Start the Minecraft server
+
+### Log Streaming, Build Progress & Diagnostics
+- `getLatestLog(lines?, logName?)` - Tail `run/logs/latest.log` or `debug.log`
+- `getGradleLog(lines?)` - Tail the Gradle runserver/build log
+- `getBuildProgress(maxChars?)` - Return the current Gradle console status (`READY`/`RUNNING`/`ERROR`) and the tail of its output
+- `diagnoseBuildErrors(logName?, lines?)` - Parse a build/server log and return categorized errors with per-line suggested fixes
+
+### Procedures, Events & Workflows
+- `createProcedure(elementName, xml?)` - Create a reusable Blockly procedure
+- `createProcedureAndAttach(procedureName, elementName, eventType, xml?)` - Create a procedure and immediately attach it to an element event in one call
+- `listProcedureTemplates()` - List available procedure templates (`empty`, `give_item`, `send_message`, `execute_command`, `set_block`, `spawn_entity`, `apply_potion`, `if_then`, `if_else`, `repeat`, `set_variable`, `math_operation`, `message`, `kill_entity`, `explode`, `play_sound`)
+- `applyProcedureTemplate(templateName, elementName, eventType, procedureName?, values?)` - Create a procedure from a named template and attach it to an element event
+- `getEventProcedures(elementName)` - List all event/procedure hooks on a mod element
+- `updateEventProcedure(elementName, eventType, procedureName?, xml?)` - Attach or update an event procedure
+- `registerEventListener(elementName, eventType, actionDefinition)` - Alias for `updateEventProcedure` using an action definition object
+- `createModWithTemplate(templateName, modName, modId, author?, version?, properties?)` - Create a complete mod from a template (`basic_item`, `ore_set`, `techmod_base`, `armor_set`, `full_biome`, `dimension_mod`)
+- `createTextureSet(setName, textureDefinitions, outputFormat?)` - Create multiple textures at once, optionally with `.mcmeta` animation files
+- `createRecipeChain(recipeName, recipes, outputFormat?)` - Create multiple linked recipes
+- `createModelFromDefinition(modelName, modelType, modelDefinition)` - Generate a JSON block/item model
+- `createSoundEvent(soundName, audioFile, category, subtitleKey?)` - Register a new sound event
+- `createParticleEffect(particleName, texture?, animationDef?, physics?)` - Create a particle effect
+- `updateElementProperties(elementName, properties)` - Update properties of an existing mod element
+
+### Bedrock Edition Support
+- `createBedrockTexturePack(packName, version, description)` - Create a Bedrock texture pack folder with `manifest.json`
+- `createBedrockResourcePack(packName, version, description, properties?)` - Create a Bedrock resource pack folder
+- `createBedrockBehaviorPack(packName, version, description, properties?)` - Create a Bedrock behavior pack folder
+- `createBedrockBehaviorJson(packName, elementType, elementName, properties?)` - Write a Bedrock behavior pack JSON definition for an item/block/entity
+- `createBedrockItem`, `createBedrockBlock`, `createBedrockEntity` - Bedrock element aliases (where supported by the generator)
+- `buildBedrockProject(packName?)` - Package resource and behavior packs into `.mcpack` files
+- `exportBedrockAddon(packName?, outputPath?)` - Package Bedrock resource and behavior pack folders into a combined `.mcaddon` file
+
+### Datapack-Only Worldgen
+- `createDatapackFeature(featureName, featureType?, target?, state?, count?)` - Write a vanilla datapack `configured_feature` + `placed_feature` JSON pair directly into the workspace data folder
+- `createDatapackStructure(structureName, nbtName?, biomeTag?, spacing?, separation?, salt?)` - Write a vanilla datapack `structure` + `template_pool` + `structure_set` JSON set directly into the workspace data folder
+- `createDatapackOre(oreName, blockState?, replaceableTag?, veinSize?, count?, heightRange?, discardChance?)` - Write a vanilla datapack `configured_feature` + `placed_feature` ore pair directly into the workspace data folder
+- `createDatapackBiome(biomeName, hasPrecipitation?, temperature?, downfall?, skyColor?, fogColor?, waterColor?, waterFogColor?, carvers?, features?, spawners?)` - Write a vanilla datapack `biome` JSON directly into the workspace data folder
+- `createDatapackDimension(dimensionName, dimensionType?, generatorType?, noiseSettings?, biomeSource?, flatLayers?)` - Write a vanilla datapack `dimension` JSON directly into the workspace data folder
+- `createDatapackDimensionType(dimensionTypeName, ambientLight?, bedWorks?, coordinateScale?, effects?, hasCeiling?, hasRaids?, hasSkylight?, height?, logicalHeight?, minY?, ultrawarm?, natural?, piglinSafe?, respawnAnchorWorks?, infiniburn?, monsterSpawnLightLevel?)` - Write a vanilla datapack `dimension_type` JSON directly into the workspace data folder
+- `createDatapackCarver(carverName, carverType?, replaceableTag?, probability?, yMin?, yMax?, lavaLevel?)` - Write a vanilla datapack `configured_carver` JSON directly into the workspace data folder
+- `createMcfunction(functionName, commands)` - Write a datapack `.mcfunction` file directly into the workspace data folder
+
+### Publishing
+- `publishToModrinth(apiToken, projectId, versionNumber, changelog?, loaders?, gameVersions?, releaseType?, filePath?)` - Publish the built JAR to Modrinth
+- `publishToCurseForge(apiToken, projectId, displayName, changelog?, releaseType?, gameVersionIds?, filePath?)` - Publish the built JAR to CurseForge
+
+### Versioning & Test Reports
+- `compareElementVersions(elementName, version1?, version2?)` - Compare an element between workspace backups (`current`, `latest`, or backup name)
+- `generateTestReport(logPath?)` - Parse the latest client/server log and produce a summary of errors, warnings, missing textures, and recipe errors
+
+### Tags, Creative Tabs, Backups & Generators
+- `createTag(tagType, tagName, entries)` / `updateTag(tagType, tagName, entries)` / `deleteTag(tagType, tagName)` / `listTags(tagType?)` - Manage data tags (items, blocks, entities, functions, biomes, etc.)
+- `createCreativeTab(tabName, displayName, icon, showSearch?)` / `updateCreativeTabs(tabName, elementNames)` / `listCreativeTabs()` - Manage custom creative inventory tabs
+- `createBackup(backupName?)` / `listBackups()` / `restoreBackup(backupName)` - Workspace local-history checkpoints
+- `listGenerators()` / `switchGenerator(generatorName)` - Switch the active generator plugin (e.g. `neoforge-1.21.1`, `datapack-1.21.1`, `addon-26.1x`)
+
+### Element Lifecycle & Fine-Grained Editing
+- `cloneElement(sourceElementName, newElementName, properties?)` - Duplicate an existing element with optional overrides
+- `renameElement(elementName, newName)` - Rename an element in the workspace
+- `moveElement(elementName, folderPath)` - Move an element to a workspace folder
+- `listElementFolders()` - List the workspace folder tree
+- `createElementFolder(folderName, parentPath?)` - Create a folder for organizing elements
+- `moveElementsToFolder(elementNames, folderPath?)` - Move multiple elements to a folder in one call
+- `editRecipe(elementName, properties)` - Modify an existing recipe's type, inputs, and output
+- `editAdvancement(elementName, properties)` - Modify an existing advancement's display, criteria, and rewards
+- `editLootTable(elementName, properties)` - Modify an existing loot table's type and pools/entries
+
+### Texture/Model Pipeline & In-Game Verification
+- `processTexture(textureName, textureType, operations)` - Resize, pad, and recolor workspace textures
+- `generateMcmeta(textureName, textureType, frameTime?, interpolate?, frames?)` - Create `.mcmeta` animation metadata
+- `generateTextureFromPrompt(prompt, textureName, textureType, width?, height?, imageUrl?, apiProvider?, apiKey?, uvTemplatePath?, seed?)` - Generate textures from a direct `imageUrl`, Pollinations, HuggingFace, or a fallback placeholder
+- `convertBlockbenchModel(sourcePath, modelName)` - Convert a Blockbench JSON model into a workspace model
+- `executeServerCommand(command, rconHost?, rconPort?, rconPassword?)` - Send an RCON command to a running server
+- `runTestScenario(scenarioName, commands, rconPassword?, rconPort?, timeoutSeconds?)` - Start a server, run commands, and return a log summary
+- `verifyClientInGame(timeoutSeconds?, outputPath?, commands?)` - Launch the Minecraft client in a virtual display and capture a screenshot of the main menu
+- `verifyInWorld(commands, includeClientScreenshot?, timeoutSeconds?, rconPassword?, outputPath?)` - Start a server, execute place/break/inspect commands via RCON, and optionally capture a client screenshot
+- `generateTestReport(logPath?)` - Parse a client/server log and return errors/warnings
+
+### CI / Automation
+- `runCIBuild(timeoutSeconds?)` - Regenerate code, build the JAR, start the server, and run a smoke-test command
+- `exportModrinth(outputPath, summary?)` - Package the built JAR into a Modrinth `.mrpack`
+
+### Element Export/Import, Bulk Operations & Build Hooks
+- `exportElement(elementName, outputPath?)` - Export a mod element's JSON to a file
+- `importElement(inputPath, newName?, properties?)` - Import a mod element from a JSON file (uses `_type`/`type`/`properties.type` and workspace `fromJSONtoGeneratableElementOrNull`)
+- `cloneElements(mappings, properties?)` - Clone multiple elements in one call
+- `renameElements(mappings)` - Rename multiple elements in one call
+- `deleteElements(elementNames)` - Delete multiple elements in one call
+- `searchAndReplace(search, replace, elementNames?, useRegex?, localizations?)` - Search/replace across element JSON and optionally localization entries
+- `addGradleDependency(configuration, dependency, mcreatorDependency?)` - Add a Gradle dependency to `build.gradle`
+- `editAccessTransformer(entries, replace?)` - Manage `META-INF/accesstransformer.cfg`
+- `editServerProperties(properties, replace?)` - Read or write `run/server.properties`
+
+### Advanced Mob AI, Code Elements & Real Asset Generation
+- `createAIBehavior(...)` - Create a `LivingEntity` with AI base, behavior/creature type, combat stats, and ranged settings
+- `addAIGoal(elementName, ...)` - Update an existing mob's AI base, attack, and ranged settings
+- `createCustomJava(className, code?, packageSubPath?)` - Create a `CustomElement`/Java class in the mod package
+- `editCustomJava(className, code)` - Overwrite an existing custom Java source file
+- `addMixinStub(className, targetClass, code?)` - Write a Mixin stub under the `mixin` subpackage
+- `generateTextureFromPrompt(prompt, textureName, textureType, width?, height?, imageUrl?, apiProvider?, apiKey?, uvTemplatePath?, seed?)` - Generate textures from an `imageUrl`, Pollinations, HuggingFace, or a fallback placeholder
+
+### Expanded Procedure Template Library
+- `listProcedureTemplates()` - List templates
+- `applyProcedureTemplate(templateName, elementName, eventType, procedureName?, values?)` - Create and attach a procedure from templates including `empty`, `give_item`, `send_message`, `execute_command`, `set_block`, `spawn_entity`, `apply_potion`, `if_then`, `if_else`, `repeat`, `set_variable`, `math_operation`, `message`, `kill_entity`, `explode`, `play_sound`
+
+### Model Validation & Conversion
+- `validateModel(sourcePath)` - Validate a `.json` or `.obj` model file
+- `convertModel(sourcePath, modelName, modelType, texture?)` - Convert an OBJ model into a Minecraft JSON model or copy an existing JSON model into the workspace
 
 ## Resources
 
@@ -128,6 +270,174 @@ MCreatorMCP/
 - `workspace://overview` - Complete workspace overview with metadata
 - `workspace://elements` - All mod elements with properties and details
 - `workspace://structure` - Project directory structure and organization
+
+## Element Property Reference
+
+`createElement` and the typed `create*` shortcuts accept an optional `properties` object. Property keys are matched to `GeneratableElement` fields (with aliases for common names). The following are commonly used keys for major Java Edition element types.
+
+### Common properties
+| Key | Type | Description |
+|-----|------|-------------|
+| `name` | string | Display/localized name |
+| `texture` | string / object | Main texture name or `{all: "name", top: "...", side: "...", item: "..."}` |
+| `creativeTabs` | array of strings | Creative tab entries |
+| `rarity` | string | `COMMON`, `UNCOMMON`, `RARE`, `EPIC` |
+
+### Item properties
+| Key | Type | Description |
+|-----|------|-------------|
+| `stackSize` | int | Max stack size (1-64) |
+| `isFood` | bool | Is edible |
+| `nutritionalValue` / `foodHealAmount` | int | Food hunger restored |
+| `saturation` / `foodSaturation` | float | Food saturation |
+| `enchantability` | int | Enchantability |
+| `immuneToFire` / `fireResistant` | bool | Is fireproof |
+| `isBurnable` | bool | Burns in furnace |
+| `creativeTabs` | array | Creative tab names |
+
+### Block properties
+| Key | Type | Description |
+|-----|------|-------------|
+| `hardness` | float | Mining hardness (-1 for unbreakable) |
+| `resistance` | float | Blast resistance |
+| `luminance` | int | Light level 0-15 |
+| `slipperiness` | float | Friction (0.6 default, 0.98 for ice) |
+| `soundOnStep` / `soundType` | string | `STONE`, `WOOD`, `METAL`, `GRAVEL`, etc. |
+| `toolForHarvest` / `toolClass` | string | `Pickaxe`, `Axe`, `Shovel`, `Hoe` |
+| `harvestLevel` / `toolLevel` | int | 0=hand, 1=wood, 2=stone, 3=iron, 4=diamond |
+| `isFlammable` | bool | Can catch fire |
+| `flammability` | int | Burn chance |
+| `fireSpreadSpeed` | int | Fire spread speed |
+| `drops` | string / object | `{item: "minecraft:diamond", count: 1}` |
+| `hasTransparency` | bool | Whether the block is translucent |
+| `transparencyType` | string | `SOLID`, `CUTOUT`, `CUTOUT_MIPPED`, `TRANSLUCENT` |
+| `renderType` / `render` | int/string | `10`/`solid`, `12`/`cutout`, `cutout_mipped`, `translucent`, `json`, `obj`, `java` |
+| `rotationMode` / `rotation` | string | `none`, `y_axis`, `all_axis`, `block_y_axis`, `block_all_axis`, `log` |
+| `tintType` / `tint` | string | `No tint`, `Grass`, `Foliage`, `Water`, `Default foliage` |
+| `texture` / `textures` | string/object | Single texture name, or `{top, bottom, side, front, back, left, right, all}` |
+| `customModelName` / `model` | string | Custom model name for `json`/`obj`/`java` render types |
+| `particleTexture` / `particle` | string | Particle texture name |
+| `itemTexture` / `item` | string | Item/inventory texture name (defaults to block texture if omitted) |
+
+### Tool / Armor / Food
+| Key | Type | Description |
+|-----|------|-------------|
+| `material` / `armorMaterial` | string | `WOOD`, `STONE`, `IRON`, `DIAMOND`, `GOLD`, `NETHERITE` |
+| `attackDamage` / `damageModifier` | float | Attack damage |
+| `attackSpeed` | float | Attack speed |
+| `efficiency` | float | Mining speed |
+| `repairItems` | array of strings | Items that repair the tool/armor |
+| `armorValues` | int[4] | Helmet, body, leggings, boots protection values |
+| `armorDurability` / `maxDamage` | int/array | Durability per piece |
+| `knockbackResistance` | float | Knockback resistance |
+
+### Recipe properties
+| Key | Type | Description |
+|-----|------|-------------|
+| `recipeType` | string | `Crafting`, `Smelting`, `Blasting`, `Smoking`, `Campfire cooking`, `Stone cutting`, `Smithing`, `Brewing` |
+| `inputs` | array | Ingredients (item names, tags, or maps) |
+| `output` | string/map | Result item or `{item: "...", count: N}` |
+| `experience` | float | XP for smelting recipes |
+| `cookingTime` / `cookTime` | int | Ticks to cook |
+
+### Fluid, Biome, Dimension, Mob, etc.
+The property applier maps JSON keys to every `GeneratableElement` field by reflection, so you can pass any documented MCreator field name. Use `getElementProperties(elementName)` to inspect the exact JSON structure of an existing element.
+
+## Example JSON Payloads
+
+### Create a customized item
+```json
+{
+  "name": "createItem",
+  "arguments": {
+    "elementName": "Ruby",
+    "properties": {
+      "name": "Ruby",
+      "stackSize": 64,
+      "rarity": "RARE",
+      "creativeTabs": ["MATERIALS"],
+      "isFood": false
+    }
+  }
+}
+```
+
+### Create a block with drops
+```json
+{
+  "name": "createBlock",
+  "arguments": {
+    "elementName": "SapphireOre",
+    "properties": {
+      "name": "Sapphire Ore",
+      "texture": "sapphire",
+      "hardness": 3,
+      "resistance": 3,
+      "toolForHarvest": "Pickaxe",
+      "harvestLevel": 2,
+      "drops": { "item": "minecraft:diamond", "count": 1 },
+      "creativeTabs": ["BUILDING_BLOCKS"]
+    }
+  }
+}
+```
+
+### Create a crafting recipe
+```json
+{
+  "name": "createRecipe",
+  "arguments": {
+    "elementName": "RubyFromCoal",
+    "properties": {
+      "recipeType": "Crafting",
+      "inputs": ["minecraft:coal", "minecraft:coal", "minecraft:coal", "minecraft:coal"],
+      "output": { "item": "Ruby", "count": 1 }
+    }
+  }
+}
+```
+
+### Create a tool
+```json
+{
+  "name": "createTool",
+  "arguments": {
+    "elementName": "SapphirePickaxe",
+    "properties": {
+      "name": "Sapphire Pickaxe",
+      "texture": "iron_tool",
+      "toolType": "Pickaxe",
+      "material": "DIAMOND",
+      "efficiency": 8,
+      "attackDamage": 5,
+      "enchantability": 15,
+      "repairItems": ["minecraft:iron_ingot"]
+    }
+  }
+}
+```
+
+### Update workspace settings
+```json
+{
+  "name": "updateWorkspaceSettings",
+  "arguments": {
+    "settings": {
+      "modName": "My MCP Mod",
+      "version": "1.0.0",
+      "author": "AI Agent"
+    }
+  }
+}
+```
+
+### Build and deploy
+```json
+{
+  "name": "buildForJavaEdition",
+  "arguments": { "includeClient": true, "includeServer": true }
+}
+```
 
 ## Configuration
 
@@ -202,7 +512,13 @@ curl -X POST http://localhost:<port>/mcp \
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+This repository is licensed under the **GNU General Public License v2.0 only
+(GPL-2.0-only)** - see the [LICENSE](LICENSE) file for details.
+
+The original MCreatorMCP code by Pylo was released under the MIT License. The
+MIT License is compatible with the GPL and that code is included in this
+combined work under GPL-2.0-only, with the original MIT copyright and
+permission notices preserved in the [LICENSE](LICENSE) file for attribution.
 
 ## Links
 

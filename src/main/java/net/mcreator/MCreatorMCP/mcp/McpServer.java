@@ -21,6 +21,7 @@ public class McpServer {
 
     private final ObjectMapper objectMapper;
     private final Map<String, McpHandler> handlers;
+    private final List<McpTypes.Tool> registeredTools;
     private final AtomicLong requestIdCounter;
     private volatile boolean initialized = false;
     
@@ -40,6 +41,7 @@ public class McpServer {
         this.serverVersion = serverVersion;
         this.objectMapper = new ObjectMapper();
         this.handlers = new ConcurrentHashMap<>();
+        this.registeredTools = Collections.synchronizedList(new ArrayList<>());
         this.requestIdCounter = new AtomicLong(1);
         
         initializeCapabilities();
@@ -186,52 +188,11 @@ public class McpServer {
      */
     private Map<String, Object> handleToolsList(Map<String, Object> params) {
         LOG.debug("Handling tools/list request");
-        
-        List<McpTypes.Tool> tools = new ArrayList<>();
-        
-        // Workspace management tools
-        tools.add(createTool("buildWorkspace", "Build the current MCreator workspace", 
-            Map.of("type", "object", "properties", Map.of())));
-        
-        tools.add(createTool("getWorkspaceInfo", "Get detailed workspace information",
-            Map.of("type", "object", "properties", Map.of())));
-        
-        tools.add(createTool("regenerateCode", "Regenerate code without building",
-            Map.of("type", "object", "properties", Map.of())));
-        
-        // Element operations
-        tools.add(createTool("listModElements", "List mod elements with optional filtering",
-            Map.of("type", "object", 
-                   "properties", Map.of(
-                       "elementType", Map.of("type", "string", "description", "Filter by element type")
-                   ))));
-        
-        tools.add(createTool("createElement", "Create new mod element",
-            Map.of("type", "object",
-                   "properties", Map.of(
-                       "elementType", Map.of("type", "string", "description", "Type of element to create"),
-                       "elementName", Map.of("type", "string", "description", "Name of the new element")
-                   ),
-                   "required", List.of("elementType", "elementName"))));
-        
-        tools.add(createTool("deleteElement", "Delete mod element",
-            Map.of("type", "object",
-                   "properties", Map.of(
-                       "elementName", Map.of("type", "string", "description", "Name of element to delete")
-                   ),
-                   "required", List.of("elementName"))));
-        
-        // Testing tools
-        tools.add(createTool("runClient", "Start Minecraft client",
-            Map.of("type", "object", "properties", Map.of())));
-        
-        tools.add(createTool("runServer", "Start Minecraft server",
-            Map.of("type", "object", "properties", Map.of())));
-        
+
         Map<String, Object> response = new HashMap<>();
-        response.put("tools", tools);
-        
-        LOG.debug("Returning {} tools", tools.size());
+        response.put("tools", new ArrayList<>(registeredTools));
+
+        LOG.debug("Returning {} tools", registeredTools.size());
         return response;
     }
 
@@ -335,19 +296,15 @@ public class McpServer {
      * Execute a tool call
      */
     private McpTypes.ToolResult executeToolCall(String toolName, Map<String, Object> arguments) {
-        // This will be implemented by delegating to the IPC endpoint
-        // For now, return a placeholder
-        String resultText = "Tool '" + toolName + "' executed successfully";
-        
+        String resultText = "Unknown tool: '" + toolName + "'. Use tools/list to see available tools.";
+        boolean isError = true;
         if (currentWorkspace == null) {
             resultText = "No workspace loaded. Please open a MCreator workspace first.";
         }
-        
         List<McpTypes.ToolContent> content = List.of(
             new McpTypes.ToolContent("text", resultText)
         );
-        
-        return new McpTypes.ToolResult(content, false);
+        return new McpTypes.ToolResult(content, isError);
     }
 
     /**
@@ -472,12 +429,32 @@ public class McpServer {
         return initialized;
     }
 
+    public int getToolCount() {
+        return registeredTools.size();
+    }
+
     /**
      * Register a custom handler
      */
     public void registerHandler(String method, McpHandler handler) {
         handlers.put(method, handler);
         LOG.debug("Registered handler for method: {}", method);
+    }
+
+    /**
+     * Register a tool with its schema and handler
+     */
+    public void registerTool(String name, String description, Map<String, Object> inputSchema, McpHandler handler) {
+        registeredTools.add(new McpTypes.Tool(name, description, inputSchema));
+        handlers.put(name, handler);
+        LOG.debug("Registered tool: {}", name);
+    }
+
+    /**
+     * Register a tool definition without adding a handler (handler already registered separately)
+     */
+    public void registerToolDefinition(String name, String description, Map<String, Object> inputSchema) {
+        registeredTools.add(new McpTypes.Tool(name, description, inputSchema));
     }
 
     /**
