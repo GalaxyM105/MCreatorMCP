@@ -128,8 +128,9 @@ The MCP server now exposes **180 tools** across workspace, element, asset, build
 - `updateWorkspaceSettings(settings)` - Update workspace settings
 - `regenerateCode()` - Regenerate code without building
 - `exportWorkspace(outputPath, includeRunDir?)` - Export the current workspace to a shareable `.zip`
-- `importWorkspace(zipPath, targetFolder?)` - Import a workspace `.zip` (extract only; open manually or restart MCreator)
+- `importWorkspace(zipPath, targetFolder?)` - Import a workspace `.zip` (extract only; open with `openWorkspace` or restart MCreator)
 - `listRecentWorkspaces()` - List recently opened MCreator workspaces
+- `openWorkspace(workspacePath)` - Open an MCreator workspace from a cold start or from an already loaded workspace
 
 ### Element Discovery & Search
 - `listModElements(elementType?)` - List mod elements with optional filtering

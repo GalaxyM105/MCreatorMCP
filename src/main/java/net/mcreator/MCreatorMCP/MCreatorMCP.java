@@ -5,7 +5,9 @@ import net.mcreator.MCreatorMCP.mcp.McpHttpTransport;
 import net.mcreator.MCreatorMCP.mcp.McpStdioTransport;
 import net.mcreator.plugin.JavaPlugin;
 import net.mcreator.plugin.Plugin;
+import net.mcreator.plugin.events.ApplicationLoadedEvent;
 import net.mcreator.plugin.events.workspace.MCreatorLoadedEvent;
+import net.mcreator.ui.MCreatorApplication;
 import net.mcreator.ui.action.BasicAction;
 import net.mcreator.ui.init.L10N;
 import net.mcreator.ui.init.UIRES;
@@ -32,6 +34,11 @@ public class MCreatorMCP extends JavaPlugin {
         // Initialize MCP server
         mcpServer = new McpServer("MCreator MCP Server", "2.0.0");
         toolsService = new MCPToolsService();
+
+        addListener(ApplicationLoadedEvent.class, event -> SwingUtilities.invokeLater(() -> {
+            mcpServer.setMCreatorApplication(event.getMCreatorApplication());
+            startNoWorkspaceMCPServer();
+        }));
 
         addListener(MCreatorLoadedEvent.class, event -> SwingUtilities.invokeLater(() -> {
             // Start MCP server
@@ -69,6 +76,33 @@ public class MCreatorMCP extends JavaPlugin {
         LOG.info("MCreator MCP Plugin loaded - ready to start MCP server");
     }
 
+    private void startNoWorkspaceMCPServer() {
+        try {
+            stopMCPServer();
+
+            int httpPort = findFreePort(5175);
+            currentHttpPort = httpPort;
+
+            mcpServer.clearTools();
+            mcpServer.setWorkspace(null);
+
+            // Register only workspace-opening tools before a workspace is loaded
+            toolsService.registerNoWorkspaceTools(mcpServer);
+
+            httpTransport = new McpHttpTransport(mcpServer, httpPort);
+            httpTransport.start();
+
+            stdioTransport = new McpStdioTransport(mcpServer);
+            stdioTransport.start();
+
+            LOG.info("MCP server started (no workspace)");
+        } catch (IOException e) {
+            LOG.error("Failed to start MCP server", e);
+            showErrorDialog("MCP Server Startup Failed",
+                "Failed to start MCP server: " + e.getMessage());
+        }
+    }
+
     private void startMCPServer(MCreatorLoadedEvent event) {
         try {
             // Stop existing server if running
@@ -80,7 +114,10 @@ public class MCreatorMCP extends JavaPlugin {
 
             // Set workspace in MCP server
             mcpServer.setWorkspace(event.getMCreator().getWorkspace());
-            
+
+            // Clear previous tool registry and register full tool set
+            mcpServer.clearTools();
+
             // Register tools with MCP server
             toolsService.registerTools(mcpServer, event.getMCreator());
 

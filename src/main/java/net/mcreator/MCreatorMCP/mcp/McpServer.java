@@ -1,6 +1,7 @@
 package net.mcreator.MCreatorMCP.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import net.mcreator.ui.MCreatorApplication;
 import net.mcreator.workspace.Workspace;
 
 import java.io.IOException;
@@ -31,6 +32,7 @@ public class McpServer {
     
     // MCreator integration
     private volatile Workspace currentWorkspace;
+    private volatile MCreatorApplication mcreatorApplication;
     
     // Capabilities
     private McpTypes.ServerCapabilities serverCapabilities;
@@ -422,6 +424,14 @@ public class McpServer {
         return currentWorkspace;
     }
 
+    public void setMCreatorApplication(MCreatorApplication application) {
+        this.mcreatorApplication = application;
+    }
+
+    public MCreatorApplication getMCreatorApplication() {
+        return mcreatorApplication;
+    }
+
     /**
      * Check if server is initialized
      */
@@ -431,6 +441,13 @@ public class McpServer {
 
     public int getToolCount() {
         return registeredTools.size();
+    }
+
+    public synchronized void clearTools() {
+        registeredTools.clear();
+        handlers.clear();
+        registerDefaultHandlers();
+        LOG.info("Cleared tool registry");
     }
 
     /**

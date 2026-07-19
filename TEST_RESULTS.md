@@ -334,7 +334,6 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 1. The test workspace still contains overlapping villager-profession POI blocks and a missing advancement item, which produce non-fatal server log errors; these are unchanged from previous phases.
 2. `generateTextureFromPrompt` can call external image APIs; Pollinations is used as the no-API-key default and HuggingFace FLUX.1-schnell is supported when an `apiKey` is provided.
 3. `verifyInWorld`/`verifyServerLoads` error counts may include stale `ERROR` lines from previous server runs; the `status` field and absence of datapack/registry errors are the reliable pass/fail signals.
-
 ## Workspace Opening (Cold-Start / No-Workspace) Tests
 
 | Tool | Payload (summary) | Result |
