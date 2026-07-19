@@ -97,7 +97,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **178 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, procedure templates, lifecycle, folders, fine-grained editing, texture/model processing, prompt-driven texture generation, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, build-error diagnostics, element JSON export/import, bulk element operations, advanced mob AI, full Code element editing, and build-system hooks. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **180 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, procedure templates, lifecycle, folders, fine-grained editing, texture/model processing, prompt-driven texture generation, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, build-error diagnostics, element JSON export/import, bulk element operations, advanced mob AI, full Code element editing, build-system hooks, and workspace opening. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
@@ -106,8 +106,9 @@ The MCP server now exposes **178 tools** across workspace, element, asset, build
 - `updateWorkspaceSettings(settings)` - Update workspace settings
 - `regenerateCode()` - Regenerate code without building
 - `exportWorkspace(outputPath, includeRunDir?)` - Export the current workspace to a shareable `.zip`
-- `importWorkspace(zipPath, targetFolder?)` - Import a workspace `.zip` (extract only; open manually or restart MCreator)
+- `importWorkspace(zipPath, targetFolder?)` - Import a workspace `.zip` (extract only; open with `openWorkspace` or restart MCreator)
 - `listRecentWorkspaces()` - List recently opened MCreator workspaces
+- `openWorkspace(workspacePath)` - Open an MCreator workspace from a cold start or from an already loaded workspace
 
 ### Element Discovery & Search
 - `listModElements(elementType?)` - List mod elements with optional filtering

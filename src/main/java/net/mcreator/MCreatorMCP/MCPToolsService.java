@@ -19,12 +19,16 @@ import net.mcreator.generator.template.TemplateGeneratorException;
 import net.mcreator.generator.mapping.MappableElement;
 import net.mcreator.minecraft.DataListLoader;
 import net.mcreator.ui.MCreator;
+import net.mcreator.ui.MCreatorApplication;
 import net.mcreator.ui.workspace.resources.TextureType;
 import net.mcreator.workspace.Workspace;
+
+import javax.swing.*;
 import net.mcreator.workspace.elements.ModElement;
 import net.mcreator.workspace.references.TextureReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.awt.Color;
@@ -41,6 +45,7 @@ import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.*;
 import java.util.LinkedHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import javax.imageio.ImageIO;
@@ -59,6 +64,9 @@ public class MCPToolsService {
      */
     public void registerTools(McpServer mcpServer, MCreator mcreator) {
         LOG.info("Registering MCreator tools with MCP server");
+
+        // Workspace opening tools are always available, even when a workspace is loaded
+        registerNoWorkspaceTools(mcpServer);
 
         // Workspace management
         mcpServer.registerTool("buildWorkspace", "Build the current MCreator workspace",
@@ -262,6 +270,88 @@ public class MCPToolsService {
         new McpPublishingAndVerificationService(this, mcpServer, mcreator).registerTools();
 
         LOG.info("Registered {} MCreator tools", mcpServer.getToolCount());
+    }
+
+    /**
+     * Register tools that can be used before a workspace is loaded
+     */
+    public void registerNoWorkspaceTools(McpServer mcpServer) {
+        LOG.info("Registering workspace-opening tools");
+
+        mcpServer.registerTool("openWorkspace", "Open an MCreator workspace",
+                objectSchema(props(
+                        "workspacePath", stringSchema("Path to the workspace folder or .mcreator file")
+                ), "workspacePath"),
+                params -> executeOpenWorkspace(mcpServer, params));
+
+        mcpServer.registerTool("listRecentWorkspaces", "List recently opened MCreator workspaces",
+                objectSchema(),
+                params -> listRecentWorkspaces(params));
+    }
+
+    /**
+     * Open a workspace in MCreator from a cold/no-workspace state
+     */
+    private McpTypes.ToolResult executeOpenWorkspace(McpServer mcpServer, Map<String, Object> params) {
+        String workspacePath = (String) params.get("workspacePath");
+        if (workspacePath == null || workspacePath.isBlank()) {
+            return createErrorResult("workspacePath is required");
+        }
+
+        MCreatorApplication application = mcpServer.getMCreatorApplication();
+        if (application == null) {
+            return createErrorResult("MCreator application is not available; the plugin may have started before the application finished loading");
+        }
+
+        File selected = new File(workspacePath);
+        if (selected.isDirectory()) {
+            File mcreatorFile = new File(selected, selected.getName() + ".mcreator");
+            if (mcreatorFile.exists()) {
+                selected = mcreatorFile;
+            } else {
+                File[] candidates = selected.listFiles((dir, name) -> name.endsWith(".mcreator"));
+                if (candidates != null && candidates.length > 0) {
+                    selected = candidates[0];
+                }
+            }
+        }
+        final File file = selected;
+
+        if (!file.exists()) {
+            return createErrorResult("Workspace file not found: " + file.getAbsolutePath());
+        }
+
+        try {
+            AtomicReference<MCreator> ref = new AtomicReference<>();
+            SwingUtilities.invokeAndWait(() -> ref.set(application.openWorkspaceInMCreator(file)));
+            MCreator newMCreator = ref.get();
+            if (newMCreator != null) {
+                return createSuccessResult("Opened workspace " + file.getAbsolutePath() +
+                        " in a new MCreator window");
+            } else {
+                return createErrorResult("MCreator returned null when opening workspace");
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to open workspace", e);
+            return createErrorResult("Failed to open workspace: " + e.getMessage());
+        }
+    }
+
+    /**
+     * List recently opened MCreator workspaces without requiring a loaded workspace
+     */
+    private McpTypes.ToolResult listRecentWorkspaces(Map<String, Object> params) {
+        File recent = new File(System.getProperty("user.home"), ".mcreator/recentworkspaces");
+        if (!recent.exists()) {
+            return createSuccessResult("No recent workspaces found");
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode node = objectMapper.readTree(recent);
+            return createSuccessResult(objectMapper.writeValueAsString(node));
+        } catch (IOException e) {
+            LOG.error("Failed to read recent workspaces", e);
+            return createErrorResult("Failed to read recent workspaces: " + e.getMessage());
+        }
     }
 
     /**
