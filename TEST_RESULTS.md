@@ -334,3 +334,20 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 1. The test workspace still contains overlapping villager-profession POI blocks and a missing advancement item, which produce non-fatal server log errors; these are unchanged from previous phases.
 2. `generateTextureFromPrompt` can call external image APIs; Pollinations is used as the no-API-key default and HuggingFace FLUX.1-schnell is supported when an `apiKey` is provided.
 3. `verifyInWorld`/`verifyServerLoads` error counts may include stale `ERROR` lines from previous server runs; the `status` field and absence of datapack/registry errors are the reliable pass/fail signals.
+
+## Workspace Opening (Cold-Start / No-Workspace) Tests
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `listRecentWorkspaces` (no workspace loaded) | no args | returned recent `MCPTtest7` and `MCPTtest8` entries |
+| `openWorkspace` (from no-workspace selector) | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest7` | opened `MCPTtest7` in a new MCreator window; MCP server re-registered full 180 tools |
+| `getWorkspaceInfo` after open | no args | returned `MCP Test Mod 7` metadata and 67 elements |
+| `regenerateCode` after open | no args | regenerated code successfully |
+| `buildWorkspace` after open | no args | produced `modid-1.0.jar` successfully |
+| `openWorkspace` (from loaded workspace) | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest8` | switched to `MCP Test Mod 8` (34 elements); tools remained available and `getWorkspaceInfo` returned new workspace |
+
+### Notes
+- The MCP server now starts when MCreator launches, even before a workspace is chosen.
+- While no workspace is loaded, only `openWorkspace` and `listRecentWorkspaces` are exposed.
+- Opening a workspace triggers `MCreatorLoadedEvent` and the full 180-tool set is registered automatically.
+- If a workspace is already loaded, `openWorkspace` opens the new workspace in an additional MCreator window; the MCP server follows the most recently loaded window.
