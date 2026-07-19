@@ -328,9 +328,49 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - `addMixinStub` writes a Mixin class under `mixin` with `@Mixin(target)`, `@Inject`, and optional custom method body.
 
 ### Tool Count
-`tools/list` returned **178 tools** after Phase 9.
+`tools/list` returned **178 tools** after Phase 9. After the workspace-opening additions it returns **180 tools**. The standalone `launcher/mcp_launcher.py` adds 5 launcher-only tools (`launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, `stopMCreator`) on top of the plugin's tools.
 
 ### Known Issues / Notes (Post-Phase 9)
 1. The test workspace still contains overlapping villager-profession POI blocks and a missing advancement item, which produce non-fatal server log errors; these are unchanged from previous phases.
 2. `generateTextureFromPrompt` can call external image APIs; Pollinations is used as the no-API-key default and HuggingFace FLUX.1-schnell is supported when an `apiKey` is provided.
 3. `verifyInWorld`/`verifyServerLoads` error counts may include stale `ERROR` lines from previous server runs; the `status` field and absence of datapack/registry errors are the reliable pass/fail signals.
+
+## Workspace Opening (Cold-Start / No-Workspace) Tests
+
+| Tool | Payload (summary) | Result |
+|------|-------------------|--------|
+| `listRecentWorkspaces` (no workspace loaded) | no args | returned recent `MCPTtest7` and `MCPTtest8` entries |
+| `openWorkspace` (from no-workspace selector) | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest7` | opened `MCPTtest7` in a new MCreator window; MCP server re-registered full 180 tools |
+| `getWorkspaceInfo` after open | no args | returned `MCP Test Mod 7` metadata and 67 elements |
+| `regenerateCode` after open | no args | regenerated code successfully |
+| `buildWorkspace` after open | no args | produced `modid-1.0.jar` successfully |
+| `openWorkspace` (from loaded workspace) | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest8` | switched to `MCP Test Mod 8` (34 elements); tools remained available and `getWorkspaceInfo` returned new workspace |
+
+### Notes
+- The MCP server now starts when MCreator launches, even before a workspace is chosen.
+- While no workspace is loaded, only `openWorkspace` and `listRecentWorkspaces` are exposed.
+- Opening a workspace triggers `MCreatorLoadedEvent` and the full 180-tool set is registered automatically.
+- If a workspace is already loaded, `openWorkspace` opens the new workspace in an additional MCreator window; the MCP server follows the most recently loaded window.
+
+## Standalone MCP Launcher Tests
+
+| Tool / Step | Payload | Result |
+|-------------|---------|--------|
+| Start `launcher/mcp_launcher.py` | `python3 launcher/mcp_launcher.py` | MCP HTTP server up on `http://localhost:5176/mcp` |
+| `health` (no MCreator) | GET `/health` | `mcreatorRunning: false`, `pluginReady: false` |
+| `tools/list` (no MCreator) | no args | returned 5 launcher tools: `launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, `stopMCreator` |
+| `listMCreatorInstallations` | no args | found `/home/ubuntu/repos/MCreator20262` |
+| `launchMCreator` with workspace | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest7` | MCreator started, plugin health became `healthy`, workspace `loaded` |
+| `tools/list` after launch | no args | returned launcher tools + all plugin tools (180 tools) |
+| `getWorkspaceInfo` via launcher | no args | proxied to plugin; returned `MCP Test Mod 7` with 67 elements |
+| `regenerateCode` via launcher | no args | proxied to plugin; regenerated 57 elements |
+| `buildWorkspace` via launcher | no args | proxied to plugin; produced `modid-1.0.jar` |
+| `launchMCreator` without workspace | no args | MCreator opened to workspace selector; plugin healthy with `workspace: null` |
+| `openWorkspace` via launcher | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest7` | plugin loaded workspace; `getWorkspaceInfo` returned `MCP Test Mod 7` |
+| `getMCreatorStatus` | no args | returned `running: true`, `pluginReady: true`, `pluginWorkspace: loaded` |
+| `stopMCreator` | no args | MCreator process killed; health returned `mcreatorRunning: false` |
+
+### Notes
+- The launcher resolves a workspace folder to its `<folder>/<folder>.mcreator` file before passing it to `mcreator.sh`, because the MCreator launcher expects the `.mcreator` file path.
+- If a workspace is not passed, MCreator opens the workspace selector and the agent can use `openWorkspace` to load one through the plugin.
+- `tools/call` for non-launcher tools, `resources/list`, `resources/read`, and any other JSON-RPC method are forwarded transparently to `http://localhost:5175/mcp` once the plugin is healthy.
