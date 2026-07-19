@@ -62,6 +62,20 @@ The MCP server exposes endpoints at (default port 5175 unless dynamically select
 
 Configure your MCP-compatible client to connect to one of these endpoints.
 
+### Cold-Start MCreator from the IDE (optional)
+
+Use the standalone MCP launcher when MCreator is not running yet:
+
+```bash
+python3 launcher/mcp_launcher.py
+```
+
+Default launcher endpoints:
+- **HTTP**: `http://localhost:5176/mcp`
+- **Health**: `http://localhost:5176/health`
+
+The launcher exposes `launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, and `stopMCreator`. After `launchMCreator` starts MCreator and the plugin, all other tool and resource calls are transparently proxied to the plugin at `http://localhost:5175/mcp`.
+
 ## Architecture
 
 ### Simplified Direct Integration
@@ -70,10 +84,16 @@ Configure your MCP-compatible client to connect to one of these endpoints.
 │   MCreator      │◄───────────────►│   LLM Client    │
 │   + MCP Plugin  │    MCP Protocol │   (Editor/Agent)│
 └─────────────────┘                 └─────────────────┘
+
+Optional cold-start path:
+┌─────────────────┐     MCP         ┌─────────────────┐     MCP         ┌─────────────────┐
+│   MCP Launcher  │────────────────►│   MCreator      │──────────────►│   LLM Client    │
+│   (launcher/)   │                 │   + MCP Plugin  │   proxy       │   (Editor/Agent)│
+└─────────────────┘                 └─────────────────┘               └─────────────────┘
 ```
 
 - **MCreator Plugin**: Contains integrated MCP server with direct API access
-- **No External Processes**: Everything runs within the plugin JVM
+- **Standalone Launcher**: Optional Python process that can start MCreator and proxy to the plugin
 - **Direct Integration**: No IPC overhead, immediate MCreator API access
 - **Clean Architecture**: Lightweight, fast, and maintainable
 
@@ -82,6 +102,8 @@ Note: Ports are dynamically selected to avoid conflicts. Check the plugin status
 ### Project Structure
 ```
 MCreatorMCP/
+├── launcher/
+│   └── mcp_launcher.py              # Standalone MCP launcher / cold-start proxy
 ├── src/main/java/net/mcreator/MCreatorMCP/
 │   ├── MCreatorMCP.java              # Main plugin entry point
 │   ├── MCPToolsService.java          # MCreator tool implementations
@@ -97,7 +119,7 @@ MCreatorMCP/
 
 ## Available Tools
 
-The MCP server now exposes **180 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, procedure templates, lifecycle, folders, fine-grained editing, texture/model processing, prompt-driven texture generation, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, build-error diagnostics, element JSON export/import, bulk element operations, advanced mob AI, full Code element editing, build-system hooks, and workspace opening. Call the `tools/list` endpoint to receive the full live list with JSON input schemas.
+The MCP server now exposes **180 tools** across workspace, element, asset, build, localization, validation, tags, creative tabs, backups, generators, procedures, procedure templates, lifecycle, folders, fine-grained editing, texture/model processing, prompt-driven texture generation, in-game verification, publishing, datapack/Bedrock helpers, log streaming, CI automation, workspace import/export, addon/plugin integration, custom model binding, build-error diagnostics, element JSON export/import, bulk element operations, advanced mob AI, full Code element editing, build-system hooks, and workspace opening. Call the `tools/list` endpoint to receive the full live list with JSON input schemas. The standalone launcher adds `launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, and `stopMCreator` for cold-starting MCreator.
 
 ### Workspace Management
 - `buildWorkspace()` - Build the current workspace
