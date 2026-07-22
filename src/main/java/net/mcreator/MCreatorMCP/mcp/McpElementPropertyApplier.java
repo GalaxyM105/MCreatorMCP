@@ -1,6 +1,7 @@
 package net.mcreator.MCreatorMCP.mcp;
 
 import net.mcreator.element.GeneratableElement;
+import net.mcreator.element.NamespacedGeneratableElement;
 import net.mcreator.element.parts.*;
 import net.mcreator.element.parts.gui.*;
 import net.mcreator.element.parts.procedure.LogicProcedure;
@@ -477,6 +478,13 @@ public class McpElementPropertyApplier {
 			}
 		}
 
+		if (ge instanceof NamespacedGeneratableElement) {
+			Object name = properties.get("name");
+			if (name instanceof String s && !s.isBlank()) {
+				properties.put("name", RegistryNameFixer.fromCamelCase(s));
+			}
+		}
+
 		if (ge instanceof LivingEntity living) {
 			Object model = properties.remove("model");
 			if (model == null)
@@ -488,12 +496,6 @@ public class McpElementPropertyApplier {
 			String textureName = texture != null ? String.valueOf(texture) : (elementName.toLowerCase(Locale.ROOT) + "_texture");
 			living.mobModelName = modelName;
 			living.mobModelTexture = textureName;
-			LivingEntity.ModelLayerEntry entry = new LivingEntity.ModelLayerEntry();
-			entry.model = modelName;
-			entry.texture = textureName;
-			if (living.modelLayers == null)
-				living.modelLayers = new ArrayList<>();
-			living.modelLayers.add(entry);
 			Object animations = properties.remove("animations");
 			if (animations instanceof List<?> list && !list.isEmpty()) {
 				if (living.animations == null)
@@ -690,12 +692,7 @@ public class McpElementPropertyApplier {
 					living.aixml = "";
 				}
 			}
-			if (living.modelLayers == null || living.modelLayers.isEmpty()) {
-				LivingEntity.ModelLayerEntry entry = new LivingEntity.ModelLayerEntry();
-				entry.model = living.mobModelName;
-				entry.texture = living.mobModelTexture;
-				living.modelLayers = new ArrayList<>(List.of(entry));
-			}
+	
 		}
 
 		if (ge instanceof Attribute attribute) {
