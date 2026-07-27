@@ -1,9 +1,9 @@
 # MCreatorMCP Tool Catalog
 
-This document lists every MCP tool exposed by the MCreatorMCP plugin introduced in PR #1, grouped by functional category. Each entry includes the tool description, JSON input parameters, and how it was verified in the `MCPTtest7` workspace (Neoforge 1.21.1, MCreator 2026.2 build 29418). For the full narrative of each test phase, see [`TEST_RESULTS.md`](TEST_RESULTS.md).
+This document lists every MCP tool exposed by the MCreatorMCP plugin, grouped by functional category. Each entry includes the tool description, JSON input parameters, and how it was verified (originally in the `MCPTtest7` workspace, with the Ultimate/ Ultimate+ wave re-verified in `VenusMod` on Neoforge 1.21.1 / MCreator 2026.2 build 29418). For the full narrative of each test phase, see [`TEST_RESULTS.md`](TEST_RESULTS.md).
 
-- **Total tools:** 178
-- **Test workspace:** `MCPTtest7` (`/home/ubuntu/MCreatorWorkspaces/MCPTtest7`)
+- **Total tools:** 220
+- **Test workspace:** `VenusMod` (`/home/ubuntu/MCreatorWorkspaces/VenusMod`)
 - **MCP endpoint:** `http://localhost:5175/mcp`
 - **Health endpoint:** `http://localhost:5175/health`
 
@@ -30,6 +30,8 @@ This document lists every MCP tool exposed by the MCreatorMCP plugin introduced 
 - [Publishing](#publishing)
 - [Datapack-Only Worldgen](#datapack-only-worldgen)
 - [Log Streaming & Build Diagnostics](#log-streaming--build-diagnostics)
+- [Asset Pipeline & Deep Introspection (Ultimate MCP)](#asset-pipeline--deep-introspection-ultimate-mcp)
+- [Localization, Code Infrastructure, Testing & Distribution (Ultimate+ MCP)](#localization-code-infrastructure-testing--distribution-ultimate-mcp)
 
 ---
 
@@ -1974,4 +1976,377 @@ No parameters.
 - `logName` (`string`, optional) — Log name: latest, gradle, debug, client (default latest)
 
 **Verification:** **Test:** `logName=latest', 'lines=200` — **Result:** parsed `latest.log`, categorized `Skipping villager profession` / advancement / tag errors and returned structured `errorCount` + suggestions
+
+---
+
+## Asset Pipeline & Deep Introspection (Ultimate MCP)
+
+Tools added to make the MCP a complete MCreator copilot. All were verified against the `VenusMod` workspace (Neoforge 1.21.1, MCreator 2026.2 build 29418).
+
+### `importSound`
+
+**Description:** Import an `.ogg` audio file and register it as a sound event
+
+**Parameters:**
+- `soundName` (`string`, required) — Registry name of the sound
+- `audioFile` (`string`, required) — Path to `.ogg` file or base64 data URI
+- `category` (`string`, optional) — Sound category (master, block, entity, etc.)
+- `subtitleKey` (`string`, optional) — Optional subtitle localization key
+
+**Verification:** **Test:** `/usr/share/sounds/Oxygen-Im-New-Mail.ogg` as `test_sound` — **Result:** copied to `assets/venusmod/sounds/test_sound.ogg`, registered in workspace
+
+### `listSounds`
+
+**Description:** List all registered sound events and their files
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** returned `test_sound` with category `master` and file `test_sound`
+
+### `deleteSound`
+
+**Description:** Delete a sound event and its `.ogg` file
+
+**Parameters:**
+- `soundName` (`string`, required) — Registry name of the sound
+
+**Verification:** **Test:** `test_sound` — **Result:** sound event and file removed
+
+### `importAnimation`
+
+**Description:** Import a Java animation file into the workspace
+
+**Parameters:**
+- `animationName` (`string`, required) — Name for the animation
+- `sourcePath` (`string`, required) — Path to the source `.java` animation file
+
+**Verification:** **Test:** `/tmp/test_anim.java` as `test_anim` — **Result:** copied to `models/animations/test_anim.java`
+
+### `listAnimations`
+
+**Description:** List imported Java animations and their sub-animations
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** returned `test_anim` with empty sub-animations
+
+### `deleteAnimation`
+
+**Description:** Delete an imported animation file
+
+**Parameters:**
+- `animationName` (`string`, required) — Animation file name without extension
+
+**Verification:** **Test:** `test_anim` — **Result:** animation file removed
+
+### `importStructure`
+
+**Description:** Import an `.nbt` structure file into the workspace
+
+**Parameters:**
+- `structureName` (`string`, required) — Name for the structure (without `.nbt`)
+- `sourcePath` (`string`, required) — Path to the source `.nbt` file
+
+**Verification:** **Test:** `empty.nbt` as `venus_temple` — **Result:** copied to `data/venusmod/structure/venus_temple.nbt`
+
+### `listStructures`
+
+**Description:** List imported structure files
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** returned `empty` and `venus_temple`
+
+### `deleteStructure`
+
+**Description:** Delete an imported structure file
+
+**Parameters:**
+- `structureName` (`string`, required) — Structure name without `.nbt`
+
+**Verification:** **Test:** `venus_temple` — **Result:** structure removed
+
+### `getElementPropertySchema`
+
+**Description:** Return the property schema for a mod element type
+
+**Parameters:**
+- `elementType` (`string`, required) — Mod element type (e.g. `block`, `item`, `livingentity`)
+
+**Verification:** **Test:** `block` — **Result:** returned 140 fields with type, kind, alias, and declared class; static `LOG` field excluded
+
+### `getElementDefaults`
+
+**Description:** Return default values for a mod element type
+
+**Parameters:**
+- `elementType` (`string`, required) — Mod element type
+- `elementName` (`string`, optional) — Optional sample element name (default `Sample`)
+
+**Verification:** **Test:** `block` — **Result:** returned default `hardness=1.0`, `resistance=10.0`, textures `mcp_placeholder`, etc.
+
+### `getPropertyHelp`
+
+**Description:** Return MCreator's localized help text for an element property
+
+**Parameters:**
+- `elementType` (`string`, required) — Mod element type
+- `propertyName` (`string`, required) — Property name
+
+**Verification:** **Test:** `block` / `hardness` — **Result:** returned help text about mining time
+
+### `listDataListValues`
+
+**Description:** List entries from an MCreator data list
+
+**Parameters:**
+- `dataList` (`string`, required) — Data list name (e.g. `blocksitems`, `entities`, `biomes`)
+
+**Verification:** **Test:** `blocksitems` — **Result:** returned 1767 entries with name, readableName, type, texture, subtypes
+
+### `resolveRegistryName`
+
+**Description:** Convert a display name to a valid resource/registry name
+
+**Parameters:**
+- `name` (`string`, required) — Display or camelCase name
+
+**Verification:** **Test:** `Venus Boss` — **Result:** returned `fromCamelCase=venus_boss`, `fix=venus_boss`
+
+### `getGeneratorInfo`
+
+**Description:** Return information about the current generator and target Minecraft version
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** `generatorName=neoforge-1.21.1`, `minecraftVersion=1.21.1`, `flavor=NEOFORGE`
+
+### `closeWorkspace`
+
+**Description:** Close the currently loaded MCreator workspace
+
+**Parameters:** No parameters.
+
+**Verification:** Not exercised during this test to keep the session open.
+
+### `cancelGradleTask`
+
+**Description:** Cancel a running Gradle task
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** called after `runDataGenerator`/`runGameTestServer` — **Result:** cancellation requested successfully
+
+### `getGeneratedSource`
+
+**Description:** Return the generated Java source for a mod element
+
+**Parameters:**
+- `elementName` (`string`, required) — Name of the mod element
+
+**Verification:** **Test:** `VenusBoss` — **Result:** returned `VenusBossDefeatProcedure.java`, `VenusBossEntity.java`, `VenusBossRenderer.java`
+
+---
+
+## Localization, Code Infrastructure, Testing & Distribution (Ultimate+ MCP)
+
+### `bulkSetLocalizations`
+
+**Description:** Set multiple localization keys at once for a given language
+
+**Parameters:**
+- `language` (`string`, optional) — Language code (default `en_us`)
+- `translations` (`object`, required) — Map of localization keys to values
+
+**Verification:** **Test:** `en_us` with `item.venusmod.example` and `block.venusmod.example` — **Result:** 2 keys set
+
+### `removeLocalization`
+
+**Description:** Remove a localization key from a language
+
+**Parameters:**
+- `language` (`string`, optional) — Language code (default `en_us`)
+- `key` (`string`, required) — Localization key to remove
+
+**Verification:** **Test:** `item.venusmod.example` — **Result:** key removed
+
+### `getMissingLocalizations`
+
+**Description:** List localization keys that are missing or empty in one language compared to another
+
+**Parameters:**
+- `baseLanguage` (`string`, optional) — Base language to compare against (default `en_us`)
+- `targetLanguage` (`string`, optional) — Target language to check (default `en_us`)
+
+**Verification:** **Test:** `en_us` vs `en_us` after setting keys — **Result:** 0 missing
+
+### `reorderCreativeTabs`
+
+**Description:** Reorder the mod elements inside a custom creative tab
+
+**Parameters:**
+- `tabName` (`string`, required) — Creative tab name or `CUSTOM:Name`
+- `elementNames` (`object`, required) — Ordered list of mod element names
+
+**Verification:** **Test:** `Venus` tab with `["VenusStone","VenusOre","VenusSand"]` — **Result:** 3 elements reordered
+
+### `bulkTagUpdate`
+
+**Description:** Replace or append entries in a data/resource tag
+
+**Parameters:**
+- `tagType` (`string`, required) — Tag type: `BLOCKS`, `ITEMS`, `ENTITIES`, etc.
+- `tagName` (`string`, required) — Tag name/path (e.g. `my_tag` or `minecraft:my_tag`)
+- `entries` (`object`, required) — List of entry names
+- `append` (`string`, optional) — Append instead of replacing (default `false`)
+
+**Verification:** **Test:** `BLOCKS` tag `venus_ores` with `["VenusOre","minecraft:stone"]` — **Result:** tag updated with 2 entries
+
+### `listGradleDependencies`
+
+**Description:** List simple string dependencies declared in `build.gradle` and `mcreator.gradle`
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** parsed `build.gradle` plugin declarations (e.g. `id 'eclipse'`)
+
+### `removeGradleDependency`
+
+**Description:** Remove a Gradle dependency line from the workspace `.gradle` files
+
+**Parameters:**
+- `configuration` (`string`, required) — Gradle configuration
+- `dependency` (`string`, required) — Dependency string to remove
+
+**Verification:** **Test:** `implementation` `com.example:lib:1.0` — **Result:** correctly reported not found
+
+### `editModsToml`
+
+**Description:** Read or update top-level keys in `META-INF/neoforge.mods.toml` (or `mods.toml`)
+
+**Parameters:**
+- `properties` (`object`, required) — Map of top-level TOML key values
+
+**Verification:** **Test:** `description="Venus dimension mod - updated via MCP"` — **Result:** `neoforge.mods.toml` updated
+
+### `editPackMcmeta`
+
+**Description:** Read or update `pack.mcmeta`
+
+**Parameters:**
+- `pack` (`object`, required) — Map of pack properties to merge (e.g. `pack_format`, `description`)
+
+**Verification:** **Test:** `pack_format=15`, `description="Venus resources"` — **Result:** `pack.mcmeta` created/updated
+
+### `runDataGenerator`
+
+**Description:** Run the generator data task (`runData`) for this workspace
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** started Gradle task `runData`; cancelled successfully
+
+### `runGameTestServer`
+
+**Description:** Run the game test server for this workspace
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** started Gradle task `runGameTestServer`; cancelled successfully
+
+### `debugClient`
+
+**Description:** Launch the Minecraft client with the debugger attached
+
+**Parameters:** No parameters.
+
+**Verification:** Compiled and registered successfully; not run to avoid a long client launch.
+
+### `stopClient`
+
+**Description:** Stop a running Minecraft client started by MCreator
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** Gradle task cancellation and client process kill requested
+
+### `stopServer`
+
+**Description:** Stop a running Minecraft server started by MCreator
+
+**Parameters:** No parameters.
+
+**Verification:** **Test:** no args — **Result:** Gradle task cancellation and server process kill requested
+
+### `verifyLootTable`
+
+**Description:** Verify that a generated loot table JSON exists and is valid JSON
+
+**Parameters:**
+- `elementName` (`string`, required) — Name of the loot table / element
+
+**Verification:** **Test:** `VenusOre` — **Result:** found and validated `data/venusmod/loot_table/blocks/venus_ore.json` in both `src` and `build`
+
+### `verifyRecipe`
+
+**Description:** Verify that a generated recipe JSON exists and is valid JSON
+
+**Parameters:**
+- `elementName` (`string`, required) — Name of the recipe / element
+
+**Verification:** **Test:** `VenusIgniter` — **Result:** found and validated `data/venusmod/recipe/venus_igniter_recipe.json`
+
+### `verifyAdvancement`
+
+**Description:** Verify that a generated advancement JSON exists and is valid JSON
+
+**Parameters:**
+- `elementName` (`string`, required) — Name of the advancement / element
+
+**Verification:** **Test:** `VenusIgniter` — **Result:** correctly reported no advancement JSON found
+
+### `packageForModrinth`
+
+**Description:** Package the built mod JAR as a Modrinth-compatible `.mrpack`
+
+**Parameters:**
+- `outputPath` (`string`, required) — Output `.mrpack` file path
+
+**Verification:** **Test:** `/tmp/venusmod.mrpack` — **Result:** produced `.mrpack` with `modrinth.index.json` and `overrides/mods/modid-1.0.jar`
+
+### `packageForCurseForge`
+
+**Description:** Package the built mod JAR as a CurseForge/Overwolf `.zip`
+
+**Parameters:**
+- `outputPath` (`string`, required) — Output `.zip` file path
+
+**Verification:** **Test:** `/tmp/venusmod-curse` — **Result:** produced `.zip` with `manifest.json` and `overrides/mods/modid-1.0.jar`
+
+### `packageForPrismLauncher`
+
+**Description:** Package the built mod JAR as a Prism Launcher instance folder
+
+**Parameters:**
+- `outputPath` (`string`, required) — Output instance folder path
+
+**Verification:** **Test:** `/tmp/venusmod-prism` — **Result:** produced `mmc-pack.json`, `instance.cfg`, and `.minecraft/mods/modid-1.0.jar`
+
+### `packageForMultiMC`
+
+**Description:** Package the built mod JAR as a MultiMC instance folder
+
+**Parameters:**
+- `outputPath` (`string`, required) — Output instance folder path
+
+**Verification:** **Test:** `/tmp/venusmod-multimc` — **Result:** produced `mmc-pack.json`, `instance.cfg`, and `.minecraft/mods/modid-1.0.jar`
+
+### `takeScreenshot`
+
+**Description:** Capture the current screen and save it as a PNG
+
+**Parameters:**
+- `outputPath` (`string`, optional) — Output PNG file path (default `/tmp/mcp_screenshot.png`)
+
+**Verification:** **Test:** `/tmp/mcp_screenshot.png` — **Result:** 379 KB PNG saved
 
