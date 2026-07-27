@@ -269,6 +269,12 @@ public class MCPToolsService {
         // Publishing, log streaming, datapack/Bedrock file helpers, and client verification
         new McpPublishingAndVerificationService(this, mcpServer, mcreator).registerTools();
 
+        // Ultimate MCP additions: asset pipeline, deep introspection, workspace lifecycle
+        new McpUltimateToolsService(this, mcpServer, mcreator).registerTools();
+
+        // Ultimate+ MCP additions: localization/bulk, code infrastructure, testing/distribution
+        new McpUltimatePlusToolsService(this, mcpServer, mcreator).registerTools();
+
         LOG.info("Registered {} MCreator tools", mcpServer.getToolCount());
     }
 

@@ -1,6 +1,6 @@
 # MCreatorMCP Expanded Server — Test Results
 
-Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCPTtest8` was used for earlier Phase 1 tests.
+Workspace used: `VenusMod` (Neoforge 1.21.1 generator, mod id `venusmod`) for the Ultimate MCP wave; `MCPTtest7` and `MCPTtest8` were used for earlier phases.
 
 ## Environment
 - MCreator: bundled install `/home/ubuntu/repos/MCreator20262`
@@ -10,7 +10,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - Health endpoint: `http://localhost:5175/health`
 
 ## Tool Count
-`tools/list` returned **178 tools** after Phase 9 (Phase 8 features plus `exportElement`/`importElement`, `cloneElements`/`renameElements`/`deleteElements`/`searchAndReplace`, `addGradleDependency`/`editAccessTransformer`/`editServerProperties`, real `generateTextureFromPrompt`, advanced mob AI, full Code element editing, and the expanded procedure-template library).
+`tools/list` returned **220 tools** after the Ultimate/ Ultimate+ MCP wave (Phase 9 plus asset pipeline, deep introspection, localization/bulk, code infrastructure, run/debug lifecycle, generated-JSON verification, and launcher packaging).
 
 ## Core Workspace Tools
 
@@ -328,7 +328,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - `addMixinStub` writes a Mixin class under `mixin` with `@Mixin(target)`, `@Inject`, and optional custom method body.
 
 ### Tool Count
-`tools/list` returned **178 tools** after Phase 9. After the workspace-opening additions it returns **180 tools**. The standalone `launcher/mcp_launcher.py` adds 5 launcher-only tools (`launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, `stopMCreator`) on top of the plugin's tools.
+`tools/list` returned **220 tools** after the Ultimate/ Ultimate+ MCP wave. The standalone `launcher/mcp_launcher.py` still adds 5 launcher-only tools on top of the plugin's tools. The standalone `launcher/mcp_launcher.py` adds 5 launcher-only tools (`launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, `stopMCreator`) on top of the plugin's tools.
 
 ### Known Issues / Notes (Post-Phase 9)
 1. The test workspace still contains overlapping villager-profession POI blocks and a missing advancement item, which produce non-fatal server log errors; these are unchanged from previous phases.
@@ -373,3 +373,61 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - The launcher resolves a workspace folder to its `<folder>/<folder>.mcreator` file before passing it to `mcreator.sh`, because the MCreator launcher expects the `.mcreator` file path.
 - If a workspace is not passed, MCreator opens the workspace selector and the agent can use `openWorkspace` to load one through the plugin.
 - `tools/call` for non-launcher tools, `resources/list`, `resources/read`, and any other JSON-RPC method are forwarded transparently to `http://localhost:5175/mcp` once the plugin is healthy.
+
+---
+
+## Ultimate / Ultimate+ MCP Wave (New Tools)
+
+This phase expanded the plugin from 180 to **220 tools**, grouped into asset pipeline, deep introspection, localization/bulk, code infrastructure, run/debug lifecycle, generated-JSON verification, and launcher packaging. All tests below used the `VenusMod` workspace on MCreator 2026.2 build 29418 / NeoForge 1.21.1.
+
+### Asset Pipeline
+
+| Tool | Payload | Result |
+|------|---------|--------|
+| `importSound` | `soundName=test_sound`, `audioFile=/usr/share/sounds/Oxygen-Im-New-Mail.ogg`, `category=master` | OK — copied and registered |
+| `listSounds` | no args | OK — returned `test_sound` |
+| `deleteSound` | `soundName=test_sound` | OK — removed |
+| `importAnimation` | `animationName=test_anim`, `sourcePath=/tmp/test_anim.java` | OK — copied |
+| `listAnimations` | no args | OK — listed `test_anim` |
+| `deleteAnimation` | `animationName=test_anim` | OK — removed |
+| `importStructure` | `structureName=venus_temple`, `sourcePath=.../empty.nbt` | OK — copied |
+| `listStructures` | no args | OK — listed `empty`, `venus_temple` |
+| `deleteStructure` | `structureName=venus_temple` | OK — removed |
+
+### Deep Introspection
+
+| Tool | Payload | Result |
+|------|---------|--------|
+| `getElementPropertySchema` | `elementType=block` | OK — 140 fields, no static `LOG` |
+| `getElementDefaults` | `elementType=block` | OK — defaults returned (`hardness=1.0`, etc.) |
+| `getPropertyHelp` | `elementType=block`, `propertyName=hardness` | OK — help text returned |
+| `listDataListValues` | `dataList=blocksitems` | OK — 1767 entries |
+| `resolveRegistryName` | `name=Venus Boss` | OK — `venus_boss` |
+| `getGeneratorInfo` | no args | OK — NeoForge 1.21.1 metadata |
+| `getGeneratedSource` | `elementName=VenusBoss` | OK — returned 3 Java source files |
+| `cancelGradleTask` | no args | OK — cancellation requested |
+
+### Localization, Code Infra, Testing & Distribution
+
+| Tool | Payload | Result |
+|------|---------|--------|
+| `bulkSetLocalizations` | `language=en_us`, 2 translations | OK — 2 keys set |
+| `removeLocalization` | `key=item.venusmod.example` | OK — removed |
+| `getMissingLocalizations` | `baseLanguage=en_us`, `targetLanguage=en_us` | OK — 0 missing |
+| `reorderCreativeTabs` | `tabName=Venus`, 3 element names | OK — reordered |
+| `bulkTagUpdate` | `BLOCKS` tag `venus_ores` with 2 entries | OK — updated |
+| `listGradleDependencies` | no args | OK — parsed `build.gradle` |
+| `removeGradleDependency` | non-existent dep | OK — reported not found |
+| `editModsToml` | `description=...` | OK — `neoforge.mods.toml` updated |
+| `editPackMcmeta` | `pack_format=15`, `description=...` | OK — `pack.mcmeta` updated |
+| `runDataGenerator` | no args | OK — started `runData`; cancelled |
+| `runGameTestServer` | no args | OK — started; cancelled |
+| `stopClient` / `stopServer` | no args | OK — stop requested |
+| `verifyLootTable` | `elementName=VenusOre` | OK — validated `loot_table/blocks/venus_ore.json` |
+| `verifyRecipe` | `elementName=VenusIgniter` | OK — validated `recipe/venus_igniter_recipe.json` |
+| `verifyAdvancement` | `elementName=VenusIgniter` | OK — correctly reported none |
+| `packageForModrinth` | `/tmp/venusmod.mrpack` | OK — `.mrpack` produced |
+| `packageForCurseForge` | `/tmp/venusmod-curse` | OK — `.zip` produced |
+| `packageForPrismLauncher` | `/tmp/venusmod-prism` | OK — instance folder produced |
+| `packageForMultiMC` | `/tmp/venusmod-multimc` | OK — instance folder produced |
+| `takeScreenshot` | `/tmp/mcp_screenshot.png` | OK — 379 KB PNG captured |
