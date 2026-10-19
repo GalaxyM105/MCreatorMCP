@@ -467,13 +467,24 @@ public class McpAdvancedToolsService {
         @SuppressWarnings("unchecked")
         Map<String, Object> properties = params.get("properties") instanceof Map ? (Map<String, Object>) params.get("properties") : new HashMap<>();
 
+        // Validate the template before touching workspace settings so a bad name
+        // cannot leave the workspace renamed/modified.
+        switch (templateName == null ? "" : templateName.toLowerCase(Locale.ROOT)) {
+        case "basic_item", "ore_set", "armor_set", "full_biome", "dimension_mod", "techmod_base" -> {}
+        default -> {
+            return host.createErrorResult("Unknown template: " + templateName + ". Available: basic_item, ore_set, armor_set, full_biome, dimension_mod, techmod_base");
+        }
+        }
+
         try {
             Workspace workspace = mcreator.getWorkspace();
             if (workspace == null) return host.createErrorResult("No workspace loaded");
 
             WorkspaceSettings oldSettings = workspace.getWorkspaceSettings();
+            oldSettings.setWorkspace(workspace);
             if (modId != null && !modId.isEmpty()) {
                 WorkspaceSettings settings = new WorkspaceSettings(modId);
+                settings.setWorkspace(workspace);
                 settings.setModName(modName != null ? modName : oldSettings.getModName());
                 settings.setVersion(version != null ? version : oldSettings.getVersion());
                 settings.setDescription(oldSettings.getDescription());

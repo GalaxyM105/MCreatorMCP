@@ -462,6 +462,7 @@ public class McpServer {
      * Register a tool with its schema and handler
      */
     public void registerTool(String name, String description, Map<String, Object> inputSchema, McpHandler handler) {
+        registeredTools.removeIf(t -> name.equals(t.getName()));
         registeredTools.add(new McpTypes.Tool(name, description, inputSchema));
         handlers.put(name, handler);
         LOG.debug("Registered tool: {}", name);
@@ -471,6 +472,7 @@ public class McpServer {
      * Register a tool definition without adding a handler (handler already registered separately)
      */
     public void registerToolDefinition(String name, String description, Map<String, Object> inputSchema) {
+        registeredTools.removeIf(t -> name.equals(t.getName()));
         registeredTools.add(new McpTypes.Tool(name, description, inputSchema));
     }
 

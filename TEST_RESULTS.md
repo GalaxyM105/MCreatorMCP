@@ -328,7 +328,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - `addMixinStub` writes a Mixin class under `mixin` with `@Mixin(target)`, `@Inject`, and optional custom method body.
 
 ### Tool Count
-`tools/list` returned **178 tools** after Phase 9. After the workspace-opening additions it returns **180 tools**. The standalone `launcher/mcp_launcher.py` adds 5 launcher-only tools (`launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, `stopMCreator`) on top of the plugin's tools.
+`tools/list` returned **178 tools** after Phase 9. After the workspace-opening additions it returns **178 tools**. The standalone `launcher/mcp_launcher.py` adds 5 launcher-only tools (`launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, `stopMCreator`) on top of the plugin's tools.
 
 ### Known Issues / Notes (Post-Phase 9)
 1. The test workspace still contains overlapping villager-profession POI blocks and a missing advancement item, which produce non-fatal server log errors; these are unchanged from previous phases.
@@ -339,7 +339,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 | Tool | Payload (summary) | Result |
 |------|-------------------|--------|
 | `listRecentWorkspaces` (no workspace loaded) | no args | returned recent `MCPTtest7` and `MCPTtest8` entries |
-| `openWorkspace` (from no-workspace selector) | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest7` | opened `MCPTtest7` in a new MCreator window; MCP server re-registered full 180 tools |
+| `openWorkspace` (from no-workspace selector) | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest7` | opened `MCPTtest7` in a new MCreator window; MCP server re-registered full 178 tools |
 | `getWorkspaceInfo` after open | no args | returned `MCP Test Mod 7` metadata and 67 elements |
 | `regenerateCode` after open | no args | regenerated code successfully |
 | `buildWorkspace` after open | no args | produced `modid-1.0.jar` successfully |
@@ -348,7 +348,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 ### Notes
 - The MCP server now starts when MCreator launches, even before a workspace is chosen.
 - While no workspace is loaded, only `openWorkspace` and `listRecentWorkspaces` are exposed.
-- Opening a workspace triggers `MCreatorLoadedEvent` and the full 180-tool set is registered automatically.
+- Opening a workspace triggers `MCreatorLoadedEvent` and the full 178-tool set is registered automatically.
 - If a workspace is already loaded, `openWorkspace` opens the new workspace in an additional MCreator window; the MCP server follows the most recently loaded window.
 
 ## Standalone MCP Launcher Tests
@@ -360,7 +360,7 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 | `tools/list` (no MCreator) | no args | returned 5 launcher tools: `launchMCreator`, `openMCreator`, `listMCreatorInstallations`, `getMCreatorStatus`, `stopMCreator` |
 | `listMCreatorInstallations` | no args | found `/home/ubuntu/repos/MCreator20262` |
 | `launchMCreator` with workspace | `workspacePath=/home/ubuntu/MCreatorWorkspaces/MCPTtest7` | MCreator started, plugin health became `healthy`, workspace `loaded` |
-| `tools/list` after launch | no args | returned launcher tools + all plugin tools (180 tools) |
+| `tools/list` after launch | no args | returned launcher tools + all plugin tools (178 tools) |
 | `getWorkspaceInfo` via launcher | no args | proxied to plugin; returned `MCP Test Mod 7` with 67 elements |
 | `regenerateCode` via launcher | no args | proxied to plugin; regenerated 57 elements |
 | `buildWorkspace` via launcher | no args | proxied to plugin; produced `modid-1.0.jar` |
@@ -373,3 +373,37 @@ Workspace used: `MCPTtest7` (Neoforge 1.21.1 generator, mod id `mcptest7`). `MCP
 - The launcher resolves a workspace folder to its `<folder>/<folder>.mcreator` file before passing it to `mcreator.sh`, because the MCreator launcher expects the `.mcreator` file path.
 - If a workspace is not passed, MCreator opens the workspace selector and the agent can use `openWorkspace` to load one through the plugin.
 - `tools/call` for non-launcher tools, `resources/list`, `resources/read`, and any other JSON-RPC method are forwarded transparently to `http://localhost:5175/mcp` once the plugin is healthy.
+
+## Validation against MCreator 2026.2 build 33518 (latest stable, Oct 2026)
+
+Environment: Ubuntu 24.04 VM, Xvfb `:99`, MCreator 2026.2 build **33518** (official release; installed at `~/mcreator-latest/MCreator20262`, bundled JetBrains Runtime JDK 25.0.2), generator `neoforge-26.1.2` (NeoForge 26.1.2.95). Plugin compiled with `-Pmcreator_path=~/mcreator-latest/MCreator20262` and installed via `plugins/MCreatorMCP.zip`.
+
+| Check | Result |
+|-------|--------|
+| `./gradlew clean test jar` | passes; `build/libs/MCreatorMCP.zip` produced |
+| Plugin load | no linkage/reflection errors; `/health` → `healthy` |
+| Transports | HTTP `/mcp` JSON-RPC ok; `/mcp/sse` legacy POST ok; stdio ok; launcher (port 5176) discover/launch/proxy/status/stop ok |
+| `tools/list` | 178 unique tools, no duplicates, all with name + description + object inputSchema |
+| Workspace | `openWorkspace` opens `mcptclean` in a new MCreator window; full tool set registers on `MCreatorLoadedEvent` |
+| `regenerateCode` | 36+ elements regenerated with correct imports |
+| `buildWorkspace` / `buildForJavaEdition` | `BUILD SUCCESSFUL`; `build/libs/modid-1.0.jar` produced |
+| Element creation | all `create*`/`register*` helpers create valid elements; generated code compiles |
+| Datapack helpers | feature, structure, ore, biome, dimension, dimension_type, carver, `.mcfunction` files written to `src/main/resources/data/` |
+| Bedrock helpers | block/biome/entity/item/script elements + behavior-pack JSON + `exportBedrockAddon` ok |
+| Publishing (dummy creds) | `publishToModrinth` → upstream `invalid_input`; `publishToCurseForge` → HTTP 404 (expected auth/request errors, no publish) |
+| Backups | `createBackup`/`listBackups`/`restoreBackup` verified (rollback confirmed) |
+| Export | `exportWorkspace` zip, `exportResourcePack`, `exportBehaviorPack` ok |
+| Variables/tags/localization/tabs/AI/procedures | create/update/delete exercised; correct validation errors on missing prerequisites |
+| runClient/runServer/verifyInWorld | tools launch `./gradlew runClient|runServer`; dedicated server and client do not stay up long enough for RCON/in-game verification in this headless environment → **partial** |
+| runCIBuild | server exits before accepting connections → **partial** (same environment limitation) |
+| `generateTextureFromPrompt`, `switchGenerator` | skipped (external API / destructive generator switch) |
+
+### Defects fixed during this validation
+- `McpServer` tool registration could produce duplicate names → dedupe by name; documented count is 178 (not 180).
+- `regenerateWorkspaceCode` regenerated Java without imports when `generatorGradleCache` was absent/empty (first workspace setup can fail silently when Maven Central rate-limits) → plugin now forces `reloadGradleCaches()` in that case.
+- `applyGeneratableElementDefaults` left `@Nonnull` String fields unset (e.g. `Function.code`) → Freemarker crashes on regen; now defaults all null String fields to `""`.
+- `createVariable`/`updateVariable` crashed `variableslist.java.ftl` on unknown types → resolves via `VariableTypeLoader` and returns a proper error.
+- Dimension `portalFrame` and Projectile `projectileItem` default to `Blocks.STONE` / `Items.ARROW` — the templates emit `.defaultBlockState()`/`new ItemStack(...)` unconditionally.
+
+### Environment note
+Maven Central returns HTTP 429 on this box; workspace Gradle builds needed a Google mirror (`~/.mcreator/gradle/init.d/mirror.gradle` — MCreator's Tooling API uses GRADLE_USER_HOME=`~/.mcreator/gradle`). This is an environment workaround, not a plugin change.
