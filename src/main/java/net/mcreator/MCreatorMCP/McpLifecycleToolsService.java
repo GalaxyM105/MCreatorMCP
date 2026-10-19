@@ -869,6 +869,10 @@ public class McpLifecycleToolsService {
 		String taskName = stringParam(params, "taskName");
 		if (taskName == null) return host.createErrorResult("taskName is required");
 		try {
+			// GradleConsole.execImpl dereferences the settings' workspace back-reference
+			// via getMCreatorDependencies() (see regenerateWorkspaceCode).
+			Workspace ws = mcreator.getWorkspace();
+			if (ws != null) ws.getWorkspaceSettings().setWorkspace(ws);
 			mcreator.getGradleConsole().exec(taskName);
 			return host.createSuccessResult("Started Gradle task: " + taskName);
 		} catch (Exception e) {

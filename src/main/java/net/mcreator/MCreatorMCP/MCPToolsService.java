@@ -433,9 +433,27 @@ public class MCPToolsService {
 
     McpTypes.ToolResult regenerateWorkspaceCode(Workspace workspace) {
         try {
+            // MCreator 2026.2 dereferences the settings' workspace back-reference in
+            // getRequiredMods()/getMCreatorDependencies(); it can be null after settings
+            // reloads or when the workspace object was built outside readFromFS.
+            workspace.getWorkspaceSettings().setWorkspace(workspace);
             Generator generator = workspace.getGenerator();
             if (generator == null)
                 return createErrorResult("No generator available for the workspace");
+
+            // Import-arrangement needs the generator's gradle cache (import tree). If the
+            // workspace's first "setup" run failed or never ran, the cache is absent or empty
+            // and generated Java files are written without imports. loadOrCreateGradleCaches()
+            // no-ops once setup is marked done, so force a reload.
+            net.mcreator.generator.GeneratorGradleCache gradleCache = generator.getGradleCache();
+            if (gradleCache == null || gradleCache.getImportTree().isEmpty()) {
+                try {
+                    generator.reloadGradleCaches();
+                } catch (Exception e) {
+                    LOG.warn("Could not reload Gradle caches; generated Java may lack imports: {}",
+                            e.getMessage());
+                }
+            }
 
             generator.generateBase(true);
 
@@ -661,7 +679,10 @@ public class MCPToolsService {
                         LimitedOptions limited = field.getAnnotation(LimitedOptions.class);
                         if (limited != null && limited.value().length > 0) {
                             field.set(generatableElement, limited.value()[0]);
-                        } else if (field.getAnnotation(javax.annotation.Nonnull.class) != null) {
+                        } else {
+                            // Several GeneratableElement fields (e.g. Function.code) carry no
+                            // nullability annotation at all; MCreator still expects them non-null
+                            // in templates. Default every non-@Nullable String to "".
                             field.set(generatableElement, "");
                         }
                     }
@@ -761,6 +782,20 @@ public class MCPToolsService {
             if (generatableElement instanceof LivingEntity living) {
                 if (living.mobModelName == null || living.mobModelName.isEmpty())
                     living.mobModelName = "Default";
+            }
+
+            if (generatableElement instanceof Dimension dimension) {
+                // The dimension templates emit `<frame>.defaultBlockState()` unconditionally
+                // when a portal is enabled; an empty frame block yields uncompilable code.
+                if (dimension.portalFrame == null || dimension.portalFrame.isEmpty())
+                    dimension.portalFrame = new MItemBlock(workspace, "Blocks.STONE");
+            }
+
+            if (generatableElement instanceof Projectile projectile) {
+                // The projectile template calls `new ItemStack(<item>)`; an empty
+                // item renders `new ItemStack()` which does not compile.
+                if (projectile.projectileItem == null || projectile.projectileItem.isEmpty())
+                    projectile.projectileItem = new MItemBlock(workspace, "Items.ARROW");
             }
 
             if (generatableElement instanceof Plant plant) {
@@ -2003,9 +2038,13 @@ public class MCPToolsService {
             Workspace workspace = mcreator.getWorkspace();
             if (workspace == null) return createErrorResult("No workspace loaded");
 
+            // Resolve through VariableTypeLoader so only real types (Number, String, Logic,
+            // ItemStack, ...) are stored; a synthetic type crashes variableslist.java.ftl on regen.
+            net.mcreator.workspace.elements.VariableType vt = net.mcreator.workspace.elements.VariableTypeLoader.INSTANCE
+                    .fromName(variableType != null ? variableType : "number");
+            if (vt == null)
+                return createErrorResult("Unknown variable type: " + variableType);
             net.mcreator.workspace.elements.VariableElement var = new net.mcreator.workspace.elements.VariableElement(variableName);
-            net.mcreator.workspace.elements.VariableType vt = new net.mcreator.workspace.elements.VariableType();
-            vt.setName(variableType != null ? variableType : "Number");
             var.setType(vt);
             if (scope != null) {
                 try {
@@ -2042,8 +2081,10 @@ public class MCPToolsService {
             Object defaultValue = params.get("defaultValue");
 
             if (variableType != null) {
-                net.mcreator.workspace.elements.VariableType vt = new net.mcreator.workspace.elements.VariableType();
-                vt.setName(variableType);
+                net.mcreator.workspace.elements.VariableType vt = net.mcreator.workspace.elements.VariableTypeLoader.INSTANCE
+                        .fromName(variableType);
+                if (vt == null)
+                    return createErrorResult("Unknown variable type: " + variableType);
                 var.setType(vt);
             }
             if (scope != null) {
